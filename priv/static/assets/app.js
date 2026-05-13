@@ -58,6 +58,24 @@ const MODE_LABELS = {
   public: "4v4"
 };
 
+// Client-side simulation constants — must match server's room.ex.
+const SIM_TICK_MS = 16;
+const SIM_PLAYER_ACCEL = 760;
+const SIM_PLAYER_FRICTION = 0.965;
+const SIM_MAX_SPEED = 240;
+const SIM_WALL_RESTITUTION = 0.5;
+
+// Reconciliation: how aggressively predicted local pos converges to server.
+const RECONCILE_HARD_PX = 60;
+const RECONCILE_POS_ALPHA = 0.22;
+const RECONCILE_VEL_ALPHA = 0.3;
+
+// Render remote entities ~100ms in the past so we always have two snapshots
+// bracketing render time and can interpolate without jitter.
+const INTERP_DELAY_MS = 100;
+const SNAPSHOT_BUFFER_MAX = 6;
+const EXTRAPOLATE_FALLBACK_MS = 80;
+
 const chatForm = document.querySelector("#chat-form");
 const chatInput = document.querySelector("#chat-input");
 
@@ -77,6 +95,10 @@ const state = {
   spectator: false,
   snapshot: null,
   snapshotAt: 0,
+  snapshotBuffer: [],
+  predicted: null,
+  predictAccumMs: 0,
+  predictLastAt: 0,
   receipts: [],
   leaderboard: [],
   input: { up: false, down: false, left: false, right: false, kick: false },
@@ -839,6 +861,10 @@ function enterGame(roomId, opts = {}) {
   }
 
   state.snapshot = null;
+  state.snapshotBuffer = [];
+  state.predicted = null;
+  state.predictAccumMs = 0;
+  state.predictLastAt = 0;
   state.receipts = [];
   state.leaderboard = [];
   state.playerId = null;
@@ -880,6 +906,10 @@ function leaveGame() {
   state.pendingStartRef = null;
   state.goalFx = null;
   state.scoresSeen = false;
+  state.snapshotBuffer = [];
+  state.predicted = null;
+  state.predictAccumMs = 0;
+  state.predictLastAt = 0;
   hideWaitingOverlay();
   if (matchResult) matchResult.hidden = true;
   showScreen("lobby");
@@ -1024,10 +1054,16 @@ function handleWelcome(payload) {
 }
 
 function handleSnapshot(snapshot) {
+  const now = performance.now();
   detectKicks(snapshot);
   detectGoals(snapshot.match);
   state.snapshot = snapshot;
-  state.snapshotAt = performance.now();
+  state.snapshotAt = now;
+  state.snapshotBuffer.push({ at: now, snapshot });
+  if (state.snapshotBuffer.length > SNAPSHOT_BUFFER_MAX) {
+    state.snapshotBuffer.splice(0, state.snapshotBuffer.length - SNAPSHOT_BUFFER_MAX);
+  }
+  reconcileLocalPlayer(snapshot);
   state.leaderboard = snapshot.leaderboard || state.leaderboard;
   state.receipts = snapshot.receipts || state.receipts;
   if (snapshot.host_id !== undefined) state.hostId = snapshot.host_id;
@@ -1036,6 +1072,44 @@ function handleSnapshot(snapshot) {
   renderHud(snapshot);
   renderWaitingRoom(snapshot);
   canvasEmpty.classList.add("hidden");
+}
+
+function findLocalPlayer(snapshot) {
+  if (!state.playerId || !snapshot || !snapshot.players) return null;
+  return snapshot.players.find((p) => p.id === state.playerId) || null;
+}
+
+function reconcileLocalPlayer(snapshot) {
+  const server = findLocalPlayer(snapshot);
+  if (!server) return;
+  if (!state.predicted) {
+    state.predicted = {
+      x: server.x,
+      y: server.y,
+      vx: server.vx || 0,
+      vy: server.vy || 0,
+      radius: server.radius
+    };
+    return;
+  }
+  const p = state.predicted;
+  p.radius = server.radius;
+  const dx = server.x - p.x;
+  const dy = server.y - p.y;
+  const err = Math.hypot(dx, dy);
+  if (err > RECONCILE_HARD_PX) {
+    // Server fired a discrete event we cannot mirror locally (kick recoil,
+    // goal reset, hard collision). Snap to authoritative state.
+    p.x = server.x;
+    p.y = server.y;
+    p.vx = server.vx || 0;
+    p.vy = server.vy || 0;
+  } else {
+    p.vx = p.vx * (1 - RECONCILE_VEL_ALPHA) + (server.vx || 0) * RECONCILE_VEL_ALPHA;
+    p.vy = p.vy * (1 - RECONCILE_VEL_ALPHA) + (server.vy || 0) * RECONCILE_VEL_ALPHA;
+    p.x += dx * RECONCILE_POS_ALPHA;
+    p.y += dy * RECONCILE_POS_ALPHA;
+  }
 }
 
 function handleStartMatchError(reason) {
@@ -1682,34 +1756,134 @@ function drawSpeechBubble(text, baselineY) {
   ctx.restore();
 }
 
-const EXTRAPOLATE_MAX_MS = 60;
+function stepLocalPrediction(now) {
+  if (!state.predicted || !state.snapshot) {
+    state.predictLastAt = now;
+    state.predictAccumMs = 0;
+    return;
+  }
+  if (!state.predictLastAt) state.predictLastAt = now;
+  let elapsed = now - state.predictLastAt;
+  state.predictLastAt = now;
+  if (elapsed < 0) elapsed = 0;
+  // Cap accumulator so a tab that was backgrounded doesn't fast-forward.
+  state.predictAccumMs = Math.min(state.predictAccumMs + elapsed, 200);
+  while (state.predictAccumMs >= SIM_TICK_MS) {
+    integratePredictedStep();
+    state.predictAccumMs -= SIM_TICK_MS;
+  }
+}
 
-function extrapolateSnapshot(snapshot) {
-  if (!snapshot || !state.snapshotAt) return snapshot;
-  const ageMs = Math.min(performance.now() - state.snapshotAt, EXTRAPOLATE_MAX_MS);
-  if (ageMs <= 0) return snapshot;
-  const dt = ageMs / 1000;
+function integratePredictedStep() {
+  const p = state.predicted;
+  const input = state.input;
+  const dt = SIM_TICK_MS / 1000;
+  const ax = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+  const ay = (input.down ? 1 : 0) - (input.up ? 1 : 0);
+  const len = Math.hypot(ax, ay);
+  const dx = len > 0 ? ax / len : 0;
+  const dy = len > 0 ? ay / len : 0;
+  p.vx = (p.vx + dx * SIM_PLAYER_ACCEL * dt) * SIM_PLAYER_FRICTION;
+  p.vy = (p.vy + dy * SIM_PLAYER_ACCEL * dt) * SIM_PLAYER_FRICTION;
+  const speed = Math.hypot(p.vx, p.vy);
+  if (speed > SIM_MAX_SPEED) {
+    p.vx = (p.vx / speed) * SIM_MAX_SPEED;
+    p.vy = (p.vy / speed) * SIM_MAX_SPEED;
+  }
+  p.x += p.vx * dt;
+  p.y += p.vy * dt;
+  clampPredictedToArena();
+}
 
-  const players = (snapshot.players || []).map((p) => ({
-    ...p,
-    x: p.x + (p.vx || 0) * dt,
-    y: p.y + (p.vy || 0) * dt
-  }));
+function clampPredictedToArena() {
+  const arena = state.snapshot && state.snapshot.arena;
+  if (!arena) return;
+  const p = state.predicted;
+  const r = p.radius || 18;
+  if (p.x < r) {
+    p.x = r;
+    if (p.vx < 0) p.vx = -p.vx * SIM_WALL_RESTITUTION;
+  } else if (p.x > arena.width - r) {
+    p.x = arena.width - r;
+    if (p.vx > 0) p.vx = -p.vx * SIM_WALL_RESTITUTION;
+  }
+  if (p.y < r) {
+    p.y = r;
+    if (p.vy < 0) p.vy = -p.vy * SIM_WALL_RESTITUTION;
+  } else if (p.y > arena.height - r) {
+    p.y = arena.height - r;
+    if (p.vy > 0) p.vy = -p.vy * SIM_WALL_RESTITUTION;
+  }
+}
 
-  const ball = snapshot.ball
-    ? {
-        ...snapshot.ball,
-        x: snapshot.ball.x + (snapshot.ball.vx || 0) * dt,
-        y: snapshot.ball.y + (snapshot.ball.vy || 0) * dt
-      }
-    : snapshot.ball;
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
 
-  return { ...snapshot, players, ball };
+function lerpPoint(a, b, t) {
+  return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
+}
+
+// Pick the two buffered snapshots that bracket renderTime. Falls back to the
+// edges (with a tiny extrapolation budget) if renderTime is outside the buffer.
+function findInterpPair(renderTime) {
+  const buf = state.snapshotBuffer;
+  if (buf.length === 0) return null;
+  if (buf.length === 1) return { a: buf[0], b: buf[0], t: 0 };
+  for (let i = 0; i < buf.length - 1; i++) {
+    const a = buf[i];
+    const b = buf[i + 1];
+    if (renderTime >= a.at && renderTime <= b.at) {
+      const span = Math.max(b.at - a.at, 1);
+      return { a, b, t: (renderTime - a.at) / span };
+    }
+  }
+  // renderTime is past the newest snapshot: extrapolate from the last pair.
+  const a = buf[buf.length - 2];
+  const b = buf[buf.length - 1];
+  const span = Math.max(b.at - a.at, 1);
+  const overshoot = Math.min(renderTime - b.at, EXTRAPOLATE_FALLBACK_MS);
+  return { a, b, t: 1 + overshoot / span };
+}
+
+function buildRenderSnapshot(now) {
+  const base = state.snapshot;
+  if (!base) return null;
+  const renderTime = now - INTERP_DELAY_MS;
+  const pair = findInterpPair(renderTime);
+  const ball = renderBall(base, pair);
+  const players = renderPlayers(base, pair);
+  return { ...base, players, ball };
+}
+
+function renderBall(base, pair) {
+  if (!base.ball) return base.ball;
+  if (!pair) return base.ball;
+  const a = pair.a.snapshot.ball;
+  const b = pair.b.snapshot.ball;
+  if (!a || !b) return b || a || base.ball;
+  return { ...b, x: lerp(a.x, b.x, pair.t), y: lerp(a.y, b.y, pair.t) };
+}
+
+function renderPlayers(base, pair) {
+  const newest = pair ? pair.b.snapshot.players || [] : base.players || [];
+  const oldest = pair ? pair.a.snapshot.players || [] : newest;
+  const byIdOld = new Map(oldest.map((p) => [p.id, p]));
+  return newest.map((bp) => {
+    if (bp.id === state.playerId && state.predicted) {
+      return { ...bp, x: state.predicted.x, y: state.predicted.y };
+    }
+    if (!pair) return bp;
+    const ap = byIdOld.get(bp.id);
+    if (!ap) return bp;
+    return { ...bp, x: lerp(ap.x, bp.x, pair.t), y: lerp(ap.y, bp.y, pair.t) };
+  });
 }
 
 function draw() {
-  const base = state.snapshot || fallbackSnapshot;
-  const snapshot = state.snapshot ? extrapolateSnapshot(base) : base;
+  const now = performance.now();
+  stepLocalPrediction(now);
+  const snapshot = state.snapshot ? buildRenderSnapshot(now) : fallbackSnapshot;
   resizeCanvas();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawStadium();
