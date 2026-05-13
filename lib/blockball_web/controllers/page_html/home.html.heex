@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>blockball</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href={~p"/assets/app.css"} />
+    <script id="blockball-auth-config" type="application/json"><%= Phoenix.HTML.raw(Jason.encode!(@auth_config)) %></script>
+    <script defer src={~p"/assets/app.js"}>
+    </script>
+  </head>
+  <body class="pitch-bg">
+    <main id="app">
+      <%!-- ============================================================
+            LANDING
+            ============================================================ --%>
+      <section class="screen" data-screen="landing">
+        <header class="top-nav">
+          <span class="brand-mark">
+            <img class="brand-logo" src={~p"/images/logo.png"} alt="blockball" />
+            blockball
+          </span>
+          <nav>
+            <a href="#" data-action="goto-play">Play</a>
+          </nav>
+        </header>
+
+        <div class="landing-stage">
+          <div class="landing-hero">
+            <div class="landing-copy">
+              <div class="landing-meta">
+                <span class="live-dot"></span>
+                <span>2 minute rooms / server physics / signed result</span>
+              </div>
+
+              <h1 class="logo">
+                <img class="hero-logo" src={~p"/images/logo.png"} alt="blockball" />
+                <span class="logo-text">block<span class="accent">ball</span></span>
+              </h1>
+
+              <p class="landing-tagline">
+                Fast top-down puck soccer for browser rivals. Play the match on a real-time server, then keep the result as a chain-ready receipt.
+              </p>
+
+              <div id="quick-match" class="landing-card" aria-label="Quick match actions">
+                <button class="cta-button" data-action="goto-play">
+                  <span>Enter Room</span>
+                  <span class="arrow">→</span>
+                </button>
+              </div>
+
+              <div id="features" class="landing-features" aria-label="Match format">
+                <div class="feature">
+                  <span class="num">01</span>
+                  <strong>Team Physics</strong>
+                  <p>Wide field, circle players, puck-like ball, kick timing.</p>
+                </div>
+                <div class="feature">
+                  <span class="num">02</span>
+                  <strong>Live Rooms</strong>
+                  <p>Practice bot, public room list, chat, score clock.</p>
+                </div>
+                <div class="feature">
+                  <span class="num">03</span>
+                  <strong>Result Ledger</strong>
+                  <p>Replay hash, server signature, season ranking payload.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="court-preview" aria-hidden="true">
+              <div class="court-header">
+                <span class="court-chip red">RED</span>
+                <span class="court-clock">02:00</span>
+                <span class="court-chip blue">BLUE</span>
+              </div>
+              <div class="court-frame">
+                <span class="goal-zone red"></span>
+                <span class="goal-zone blue"></span>
+                <span class="center-line"></span>
+                <span class="center-ring"></span>
+                <span class="trajectory one"></span>
+                <span class="trajectory two"></span>
+                <span class="player-dot red striker"></span>
+                <span class="player-dot blue keeper"></span>
+                <span class="puck"></span>
+              </div>
+              <div class="receipt-tape">
+                <span>REPLAY HASH</span>
+                <strong>0x7A9C...21F4</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <%!-- ============================================================
+            SIGNUP
+            ============================================================ --%>
+      <section class="screen" data-screen="signup" hidden>
+        <header class="top-nav">
+          <span class="brand-mark">
+            <img class="brand-logo" src={~p"/images/logo.png"} alt="blockball" />
+            blockball
+          </span>
+          <nav>
+            <button class="ghost-button small" data-action="back-to-landing">Back</button>
+          </nav>
+        </header>
+
+        <div class="modal-stage">
+          <div class="modal-card auth-card">
+            <div class="auth-copy">
+              <p class="eyebrow"><span class="num">01</span> Player Account</p>
+              <h2>Sign in before kickoff</h2>
+              <p class="muted small">
+                Privy embedded wallet is the default path for players who do not know wallets yet. Browser wallets remain available for crypto-native players.
+              </p>
+
+              <div class="auth-lanes" aria-label="Account capabilities">
+                <div>
+                  <strong>Embedded wallet</strong>
+                  <span>Email OTP now, Google/Discord through Privy app settings.</span>
+                </div>
+                <div>
+                  <strong>Gasless-ready</strong>
+                  <span>Profile stores wallet identity for future smart wallet and paymaster flows.</span>
+                </div>
+                <div>
+                  <strong>External wallet</strong>
+                  <span>MetaMask, Rabby, and Coinbase Wallet via injected EIP-1193 provider.</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="auth-panel">
+              <div id="auth-profile-card" class="auth-profile-card" hidden>
+                <span class="auth-pill">Registered</span>
+                <strong id="auth-profile-name">—</strong>
+                <span id="auth-profile-wallet">—</span>
+              </div>
+
+              <form id="privy-email-form" class="stack">
+                <label>
+                  Email
+                  <input id="privy-email-input" name="email" type="email" autocomplete="email" placeholder="player@example.com" />
+                </label>
+                <button type="submit" class="cta-button">
+                  <span>Email sign in</span>
+                  <span class="arrow">→</span>
+                </button>
+              </form>
+
+              <form id="privy-code-form" class="stack" hidden>
+                <label>
+                  Verification code
+                  <input id="privy-code-input" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456" />
+                </label>
+                <button type="submit" class="cta-button">
+                  <span>Create embedded wallet</span>
+                  <span class="arrow">→</span>
+                </button>
+              </form>
+
+              <div class="auth-divider"><span>or</span></div>
+
+              <button type="button" class="primary-button auth-wide-button" data-action="connect-external-wallet">
+                Connect Browser Wallet
+              </button>
+              <button id="dev-auth-button" type="button" class="ghost-button auth-wide-button" data-action="dev-auth" hidden>
+                Use Local Dev Account
+              </button>
+
+              <p id="auth-status" class="auth-status muted small" aria-live="polite"></p>
+              <div class="row end">
+                <button id="auth-continue-button" type="button" class="cta-button" data-action="auth-continue" hidden>
+                  <span>Continue</span>
+                  <span class="arrow">→</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <%!-- ============================================================
+            NICKNAME
+            ============================================================ --%>
+      <section class="screen" data-screen="nickname" hidden>
+        <header class="top-nav">
+          <span class="brand-mark">
+            <img class="brand-logo" src={~p"/images/logo.png"} alt="blockball" />
+            blockball
+          </span>
+          <nav>
+            <span class="wallet-tag" id="nickname-wallet">Wallet · —</span>
+            <button class="ghost-button small" data-action="sign-out">Sign out</button>
+          </nav>
+        </header>
+
+        <div class="modal-stage">
+          <div class="modal-card narrow">
+            <p class="eyebrow"><span class="num">02</span> Match Registration</p>
+            <h2>Pick a nickname</h2>
+            <p class="muted small">Shown to opponents and stamped on your match receipts.</p>
+
+            <form id="nickname-form" class="stack">
+              <label>
+                Nickname
+                <input id="nickname-input" name="nickname" maxlength="18" autocomplete="nickname" placeholder="e.g. NEON_K" required />
+              </label>
+              <div class="row end">
+                <button type="button" class="ghost-button" data-action="back-to-landing">Back</button>
+                <button type="submit" class="cta-button">
+                  <span>Continue</span>
+                  <span class="arrow">→</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <%!-- ============================================================
+            LOBBY
+            ============================================================ --%>
+      <section class="screen" data-screen="lobby" hidden>
+        <header class="top-nav">
+          <span class="brand-mark">
+            <img class="brand-logo" src={~p"/images/logo.png"} alt="blockball" />
+            blockball
+          </span>
+          <nav>
+            <span class="wallet-tag" id="lobby-wallet">Wallet · —</span>
+            <span class="nick-tag">Player · <strong id="lobby-nick">—</strong></span>
+            <button class="ghost-button small" data-action="change-nick">Change</button>
+            <button class="ghost-button small" data-action="sign-out">Sign out</button>
+          </nav>
+        </header>
+
+        <div class="modal-stage">
+          <div class="modal-card wide">
+            <div class="modal-header">
+              <div>
+                <p class="eyebrow"><span class="num">03</span> Open Rooms</p>
+                <h2>Lobby</h2>
+              </div>
+              <div class="lobby-stats">
+                <div class="stat">
+                  <strong id="lobby-meta">0 players in 0 rooms</strong>
+                  <span>active now</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="lobby-grid">
+              <div class="room-table-wrap">
+                <table class="room-table">
+                  <thead>
+                    <tr>
+                      <th>Room</th>
+                      <th>Mode</th>
+                      <th>Players</th>
+                      <th>Status</th>
+                      <th aria-label="actions"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="room-rows">
+                    <tr class="empty"><td colspan="5">Loading rooms…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <aside class="lobby-actions">
+                <button class="cta-button" data-action="practice">
+                  <span>Practice vs Bot</span>
+                  <span class="arrow">→</span>
+                </button>
+                <button class="primary-button" data-action="open-create">Create Room</button>
+                <button class="ghost-button" data-action="refresh-rooms">↻ Refresh</button>
+                <div class="lobby-help">
+                  <p>Choose your team size (1v1–4v4) when creating a room. The host starts the match once everyone has joined.</p>
+                </div>
+              </aside>
+            </div>
+
+            <div id="create-room-panel" class="create-panel" hidden>
+              <p class="eyebrow"><span class="num">03</span> New Room</p>
+              <form id="create-room-form" class="row" style="margin-top: var(--s-3)">
+                <label class="grow">
+                  Room name
+                  <input id="create-room-name" maxlength="28" placeholder="e.g. Casual 2v2" required />
+                </label>
+                <label>
+                  Mode
+                  <select id="create-room-mode">
+                    <option value="vs1">1 vs 1</option>
+                    <option value="vs2" selected>2 vs 2</option>
+                    <option value="vs3">3 vs 3</option>
+                    <option value="vs4">4 vs 4</option>
+                    <option value="practice">Practice (bot only)</option>
+                  </select>
+                </label>
+                <div class="row end">
+                  <button type="button" class="ghost-button" data-action="close-create">Cancel</button>
+                  <button type="submit" class="cta-button">Create</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <%!-- ============================================================
+            GAME
+            ============================================================ --%>
+      <section class="screen game-screen" data-screen="game" hidden>
+        <div class="game-shell">
+
+          <%!-- ARENA --%>
+          <section class="arena-column" aria-label="Game arena">
+            <div class="scorebug idle" id="scorebug" aria-live="polite">
+              <div class="scorebug-side red">
+                <span class="kit-mark">R</span>
+                <strong id="red-score" class="score">0</strong>
+              </div>
+
+              <div class="scorebug-core">
+                <strong id="match-timer" class="clock">2:00</strong>
+                <span class="live-pill">
+                  <span class="live-dot"></span>
+                  <span id="match-state">Waiting</span>
+                </span>
+              </div>
+
+              <div class="scorebug-side blue">
+                <strong id="blue-score" class="score">0</strong>
+                <span class="kit-mark">B</span>
+              </div>
+            </div>
+
+            <div class="canvas-wrap">
+              <canvas id="game-canvas" width="1600" height="900" aria-label="blockball game canvas"></canvas>
+              <div id="canvas-empty" class="canvas-empty">
+                <span class="empty-eyebrow">Awaiting kickoff</span>
+                <span class="empty-title">Enter a room</span>
+              </div>
+              <div id="waiting-room-overlay" class="waiting-overlay" hidden>
+                <div class="waiting-card">
+                  <p class="eyebrow">Waiting Room</p>
+                  <h2 id="waiting-room-title" class="waiting-title">Room</h2>
+                  <p class="waiting-count">
+                    <span id="waiting-player-count">0</span> / <span id="waiting-capacity">2</span> ready
+                  </p>
+                  <ul id="waiting-roster" class="waiting-roster"></ul>
+                  <button id="start-match-btn" class="cta-button" type="button" disabled>
+                    Waiting for host…
+                  </button>
+                  <p id="waiting-hint" class="waiting-hint"></p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <%!-- MATCH RESULT — shown on game end --%>
+          <div id="match-result" class="match-result" hidden>
+            <div class="match-result-card" role="dialog" aria-modal="true" aria-labelledby="match-result-title">
+              <span class="match-result-eyebrow">Final</span>
+              <h2 id="match-result-title" class="match-result-title">—</h2>
+              <div class="match-result-score">
+                <span class="match-result-team red">
+                  <span class="kit-dot red"></span>
+                  <strong id="match-result-red">0</strong>
+                </span>
+                <span class="match-result-sep">—</span>
+                <span class="match-result-team blue">
+                  <strong id="match-result-blue">0</strong>
+                  <span class="kit-dot blue"></span>
+                </span>
+              </div>
+              <button type="button" class="cta-button" data-action="back-to-lobby">
+                <span>Leave match</span>
+                <span class="arrow">→</span>
+              </button>
+            </div>
+          </div>
+
+          <%!-- BOTTOM — chat dock --%>
+          <section class="chat-dock" aria-label="Room chat">
+            <form id="chat-form" class="chat-input-row">
+              <input
+                id="chat-input"
+                type="text"
+                maxlength="240"
+                placeholder="Press Enter to chat…"
+                autocomplete="off"
+              />
+              <button type="submit" class="primary-button small">Send</button>
+            </form>
+          </section>
+
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+  </body>
+</html>
