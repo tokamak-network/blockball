@@ -1,0 +1,7 @@
+.DS_Store
+.env
+*.log
+_build/
+deps/
+erl_crash.dump
+priv/static/assets/*.gz
