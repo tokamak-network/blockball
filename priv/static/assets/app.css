@@ -591,33 +591,6 @@ h1.logo .accent {
     var(--color-snow-white);
 }
 
-.court-preview::before {
-  content: "";
-  position: absolute;
-  left: -18px;
-  top: -18px;
-  width: 100px;
-  height: 82px;
-  border-radius: 47% 53% 43% 57%;
-  background:
-    radial-gradient(circle at 34% 42%, var(--color-snow-white) 0 7%, transparent 8%),
-    radial-gradient(circle at 66% 42%, var(--color-snow-white) 0 7%, transparent 8%),
-    var(--color-duo-green);
-  transform: rotate(-8deg);
-}
-
-.court-preview::after {
-  content: "";
-  position: absolute;
-  left: 15px;
-  top: 30px;
-  width: 56px;
-  height: 18px;
-  border-radius: 0 0 999px 999px;
-  border-bottom: 6px solid #2f7d00;
-  transform: rotate(-8deg);
-}
-
 .court-header {
   position: relative;
   z-index: 1;
@@ -626,7 +599,6 @@ h1.logo .accent {
   gap: var(--spacing-12);
   align-items: center;
   margin-bottom: var(--spacing-12);
-  padding-left: 78px;
 }
 
 .court-chip,
