@@ -2198,8 +2198,7 @@ function boot() {
 
 function initCourtPreviewAnimation() {
   const clock = document.querySelector(".court-preview .court-clock");
-  const hash = document.querySelector(".court-preview .receipt-tape strong");
-  if (!clock && !hash) return;
+  if (!clock) return;
 
   const TOTAL_SECONDS = 120;
   let remaining = TOTAL_SECONDS;
@@ -2210,22 +2209,12 @@ function initCourtPreviewAnimation() {
     return `${m}:${sec}`;
   };
 
-  if (clock) clock.textContent = fmt(remaining);
+  clock.textContent = fmt(remaining);
 
   setInterval(() => {
     remaining = remaining > 0 ? remaining - 1 : TOTAL_SECONDS;
-    if (clock) clock.textContent = fmt(remaining);
+    clock.textContent = fmt(remaining);
   }, 1000);
-
-  if (hash) {
-    const randHex = (n) =>
-      Array.from({ length: n }, () =>
-        "0123456789ABCDEF"[Math.floor(Math.random() * 16)]
-      ).join("");
-    setInterval(() => {
-      hash.textContent = `0x${randHex(4)}...${randHex(4)}`;
-    }, 4000);
-  }
 }
 
 boot();

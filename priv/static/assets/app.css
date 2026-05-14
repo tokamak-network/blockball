@@ -520,26 +520,6 @@ h4 {
   min-height: 52px;
 }
 
-.landing-secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--color-graphite);
-  font-size: var(--text-caption);
-  font-weight: var(--font-weight-bold);
-  letter-spacing: 0.04em;
-  text-decoration: none;
-  text-transform: uppercase;
-  border-bottom: 1px solid transparent;
-  padding-bottom: 2px;
-  transition: color 0.14s ease, border-color 0.14s ease;
-}
-
-.landing-secondary:hover {
-  color: var(--color-almost-black);
-  border-bottom-color: var(--color-almost-black);
-}
-
 .landing-features {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -793,32 +773,6 @@ h4 {
   *::after {
     transition-duration: 0.01ms !important;
   }
-}
-
-.receipt-tape {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: var(--spacing-12);
-  margin-top: var(--spacing-12);
-  padding: var(--spacing-12) var(--spacing-16);
-  border: 1px solid var(--color-cloud-gray);
-  border-radius: 12px;
-  background: var(--color-snow-white);
-  color: var(--color-graphite);
-  font-size: 11px;
-  font-weight: var(--font-weight-bold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.receipt-tape strong {
-  color: var(--color-almost-black);
-  font-family: var(--font-feather);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: none;
 }
 
 .modal-stage {
