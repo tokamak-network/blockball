@@ -1,8 +1,10 @@
 defmodule BlockballWeb.PageController do
   use BlockballWeb, :controller
 
+  alias Blockball.Game.Room
+
   def home(conn, _params) do
-    render(conn, :home, auth_config: auth_config())
+    render(conn, :home, auth_config: auth_config(), physics_config: Room.physics_config())
   end
 
   defp auth_config do

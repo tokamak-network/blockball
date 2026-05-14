@@ -5,6 +5,7 @@ defmodule Blockball.Game.Room do
 
   alias Blockball.Game
   alias Blockball.Game.Leaderboard
+  alias Blockball.Util
   alias BlockballWeb.Endpoint
 
   @tick_ms 16
@@ -34,6 +35,26 @@ defmodule Blockball.Game.Room do
   @player_inv_mass 1.0
   @ball_inv_mass 2.0
   @dribble_restitution 0.1
+
+  @doc """
+  Physics constants needed by the client for local prediction and bounds checks.
+  Single source of truth — must stay co-located with the @-attributes above.
+  """
+  @spec physics_config() :: map()
+  def physics_config do
+    %{
+      tick_ms: @tick_ms,
+      player_radius: @player_radius,
+      ball_radius: @ball_radius,
+      max_speed: @max_speed,
+      player_accel: @player_accel,
+      player_friction: @player_friction,
+      ball_friction: @ball_friction,
+      max_ball_speed: @max_ball_speed,
+      wall_restitution: @wall_restitution,
+      arena: @arena
+    }
+  end
 
   def start_link({room_id, opts}) when is_list(opts) do
     GenServer.start_link(__MODULE__, {room_id, opts}, name: Game.via(room_id))
@@ -256,7 +277,7 @@ defmodule Blockball.Game.Room do
     started_at = DateTime.utc_now()
 
     %{
-      id: random_id(10),
+      id: Util.random_id(10),
       season_id: "blockball-alpha-01",
       status: status,
       started_at: started_at,
@@ -1060,12 +1081,4 @@ defmodule Blockball.Game.Room do
   defp sha256(binary), do: :crypto.hash(:sha256, binary) |> Base.encode16(case: :lower)
   defp dt, do: @tick_ms / 1000
   defp now_ms, do: System.monotonic_time(:millisecond)
-
-  defp random_id(length) do
-    length
-    |> :crypto.strong_rand_bytes()
-    |> Base.url_encode64(padding: false)
-    |> String.slice(0, length)
-    |> String.upcase()
-  end
 end

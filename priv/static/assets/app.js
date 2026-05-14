@@ -2,7 +2,8 @@ const NICK_STORAGE_KEY = "blockball-name";
 const AUTH_STORAGE_KEY = "blockball-auth";
 const LOBBY_POLL_MS = 5000;
 
-const authConfig = readAuthConfig();
+const authConfig = readJsonConfig("#blockball-auth-config");
+const physicsConfig = readJsonConfig("#blockball-physics-config");
 
 const canvas = document.querySelector("#game-canvas");
 const ctx = canvas.getContext("2d");
@@ -58,12 +59,13 @@ const MODE_LABELS = {
   public: "4v4"
 };
 
-// Client-side simulation constants — must match server's room.ex.
-const SIM_TICK_MS = 16;
-const SIM_PLAYER_ACCEL = 760;
-const SIM_PLAYER_FRICTION = 0.965;
-const SIM_MAX_SPEED = 240;
-const SIM_WALL_RESTITUTION = 0.5;
+// Client-side simulation constants — sourced from server's Blockball.Game.Room.physics_config/0.
+// Defaults below are fallbacks if the inline JSON is unavailable; they should never be the active values.
+const SIM_TICK_MS = physicsConfig.tick_ms ?? 16;
+const SIM_PLAYER_ACCEL = physicsConfig.player_accel ?? 760;
+const SIM_PLAYER_FRICTION = physicsConfig.player_friction ?? 0.965;
+const SIM_MAX_SPEED = physicsConfig.max_speed ?? 240;
+const SIM_WALL_RESTITUTION = physicsConfig.wall_restitution ?? 0.5;
 
 // Reconciliation: how aggressively predicted local pos converges to server.
 const RECONCILE_HARD_PX = 60;
@@ -126,13 +128,13 @@ let privyIframe = null;
 let privyMessageListener = null;
 let audioCtx = null;
 
-function readAuthConfig() {
-  const el = document.querySelector("#blockball-auth-config");
+function readJsonConfig(selector) {
+  const el = document.querySelector(selector);
   if (!el || !el.textContent) return {};
   try {
     return JSON.parse(el.textContent);
   } catch (err) {
-    console.warn("Auth config parse failed:", err);
+    console.warn(`${selector} parse failed:`, err);
     return {};
   }
 }
@@ -1346,6 +1348,14 @@ function drawArena(snapshot) {
   const goalTop = cy - arena.goal_size / 2;
   const cornerR = arena.corner_radius || 60;
 
+  drawCourtBackground(arena, cornerR);
+  drawCourtLines(arena, cx, cy, cornerR);
+  drawPenaltyZones(arena, cy);
+  drawGoal(-arena.goal_depth, goalTop, arena.goal_depth, arena.goal_size, TEAM_RED, "left");
+  drawGoal(arena.width, goalTop, arena.goal_depth, arena.goal_size, TEAM_BLUE, "right");
+}
+
+function drawCourtBackground(arena, cornerR) {
   ctx.save();
   ctx.beginPath();
   pathRoundedRect(0, 0, arena.width, arena.height, cornerR);
@@ -1380,7 +1390,9 @@ function drawArena(snapshot) {
   }
 
   ctx.restore();
+}
 
+function drawCourtLines(arena, cx, cy, cornerR) {
   ctx.strokeStyle = LINE_COLOR;
   ctx.lineWidth = 3;
 
@@ -1408,8 +1420,12 @@ function drawArena(snapshot) {
   ctx.beginPath();
   ctx.arc(cx, cy, 4, 0, Math.PI * 2);
   ctx.fill();
+}
 
+function drawPenaltyZones(arena, cy) {
   const penaltyRadius = 130;
+  const firstPenaltySpot = 60;
+  const secondPenaltySpot = 110;
 
   ctx.strokeStyle = LINE_COLOR;
   ctx.lineWidth = 3;
@@ -1421,8 +1437,6 @@ function drawArena(snapshot) {
   ctx.arc(arena.width, cy, penaltyRadius, Math.PI / 2, -Math.PI / 2, false);
   ctx.stroke();
 
-  const firstPenaltySpot = 60;
-  const secondPenaltySpot = 110;
   ctx.fillStyle = LINE_COLOR;
   for (const dist of [firstPenaltySpot, secondPenaltySpot]) {
     ctx.beginPath();
@@ -1432,9 +1446,6 @@ function drawArena(snapshot) {
     ctx.arc(arena.width - dist, cy, 3, 0, Math.PI * 2);
     ctx.fill();
   }
-
-  drawGoal(-arena.goal_depth, goalTop, arena.goal_depth, arena.goal_size, TEAM_RED, "left");
-  drawGoal(arena.width, goalTop, arena.goal_depth, arena.goal_size, TEAM_BLUE, "right");
 }
 
 function drawGoal(x, y, w, h, color, side) {
@@ -1526,11 +1537,21 @@ function drawBall(ball) {
   ctx.save();
   ctx.translate(ball.x, ball.y);
   const speed = Math.min(1, Math.hypot(ball.vx || 0, ball.vy || 0) / 620);
+  drawBallShadow(ball, speed);
+  drawBallBody(ball);
+  drawBallPentagons(ball);
+  drawBallHighlight(ball);
+  ctx.restore();
+}
+
+function drawBallShadow(ball, speed) {
   ctx.fillStyle = `rgba(63, 143, 1, ${0.12 + speed * 0.18})`;
   ctx.beginPath();
   ctx.ellipse(3, 7, ball.radius * 1.15, ball.radius * 0.45, 0, 0, Math.PI * 2);
   ctx.fill();
+}
 
+function drawBallBody(ball) {
   const ballGradient = ctx.createRadialGradient(
     -ball.radius * 0.38,
     -ball.radius * 0.45,
@@ -1547,7 +1568,9 @@ function drawBall(ball) {
   ctx.arc(0, 0, ball.radius, 0, Math.PI * 2);
   ctx.fillStyle = ballGradient;
   ctx.fill();
+}
 
+function drawBallPentagons(ball) {
   ctx.save();
   ctx.beginPath();
   ctx.arc(0, 0, ball.radius - 0.15, 0, Math.PI * 2);
@@ -1589,7 +1612,9 @@ function drawBall(ball) {
   }
 
   ctx.restore();
+}
 
+function drawBallHighlight(ball) {
   const shade = ctx.createRadialGradient(
     -ball.radius * 0.35,
     -ball.radius * 0.45,
@@ -1615,8 +1640,6 @@ function drawBall(ball) {
   ctx.beginPath();
   ctx.arc(-ball.radius * 0.38, -ball.radius * 0.42, ball.radius * 0.22, 0, Math.PI * 2);
   ctx.fill();
-
-  ctx.restore();
 }
 
 function drawPlayer(player) {
@@ -1998,7 +2021,18 @@ function handleAction(action, dataset) {
   }
 }
 
-function bindEvents() {
+function clearInputState() {
+  let changed = false;
+  for (const key of Object.keys(state.input)) {
+    if (state.input[key]) {
+      state.input[key] = false;
+      changed = true;
+    }
+  }
+  if (changed) sendInput();
+}
+
+function bindActionDelegate() {
   document.addEventListener("click", (event) => {
     unlockAudio();
     const target = event.target.closest("[data-action]");
@@ -2006,7 +2040,9 @@ function bindEvents() {
     event.preventDefault();
     handleAction(target.dataset.action, target.dataset);
   });
+}
 
+function bindNicknameForm() {
   nicknameForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const value = nicknameInput.value.trim().slice(0, 18);
@@ -2027,7 +2063,9 @@ function bindEvents() {
       showScreen("lobby");
     }
   });
+}
 
+function bindRouter() {
   window.addEventListener("popstate", () => {
     const route = parseRoute(location.pathname);
     if (state.screen === "game" && route.screen !== "game" && state.socket) {
@@ -2042,19 +2080,24 @@ function bindEvents() {
     }
     applyRoute(route);
   });
+}
 
+function bindAuthAndRoomForms() {
   createRoomForm.addEventListener("submit", submitCreate);
   if (privyEmailForm) privyEmailForm.addEventListener("submit", submitPrivyEmail);
   if (privyCodeForm) privyCodeForm.addEventListener("submit", submitPrivyCode);
+}
 
-  if (startMatchBtn) {
-    startMatchBtn.addEventListener("click", (event) => {
-      event.preventDefault();
-      if (startMatchBtn.disabled) return;
-      startMatch();
-    });
-  }
+function bindWaitingControls() {
+  if (!startMatchBtn) return;
+  startMatchBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    if (startMatchBtn.disabled) return;
+    startMatch();
+  });
+}
 
+function bindChat() {
   if (chatForm) {
     chatForm.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -2066,33 +2109,24 @@ function bindEvents() {
     });
   }
 
-  if (chatInput) {
-    chatInput.addEventListener("keydown", (event) => {
-      if (event.code === "Escape") {
-        event.preventDefault();
-        chatInput.value = "";
-        chatInput.blur();
-      }
-    });
-    chatInput.addEventListener("focus", () => {
-      state.chatFocused = true;
-    });
-    chatInput.addEventListener("blur", () => {
-      state.chatFocused = false;
-    });
-  }
+  if (!chatInput) return;
 
-  function clearInputState() {
-    let changed = false;
-    for (const key of Object.keys(state.input)) {
-      if (state.input[key]) {
-        state.input[key] = false;
-        changed = true;
-      }
+  chatInput.addEventListener("keydown", (event) => {
+    if (event.code === "Escape") {
+      event.preventDefault();
+      chatInput.value = "";
+      chatInput.blur();
     }
-    if (changed) sendInput();
-  }
+  });
+  chatInput.addEventListener("focus", () => {
+    state.chatFocused = true;
+  });
+  chatInput.addEventListener("blur", () => {
+    state.chatFocused = false;
+  });
+}
 
+function bindGameInput() {
   // 창이 포커스를 잃거나 탭이 가려지면 keyup이 도착하지 않아 키가
   // 눌린 상태로 남는다. 이 때 입력을 비워서 stuck-key를 막는다.
   window.addEventListener("blur", clearInputState);
@@ -2134,6 +2168,16 @@ function bindEvents() {
     state.lastSent = "";
     sendInput();
   }, 200);
+}
+
+function bindEvents() {
+  bindActionDelegate();
+  bindNicknameForm();
+  bindRouter();
+  bindAuthAndRoomForms();
+  bindWaitingControls();
+  bindChat();
+  bindGameInput();
 }
 
 function boot() {

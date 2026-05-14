@@ -4,6 +4,7 @@ defmodule Blockball.Game do
   """
 
   alias Blockball.Game.Room
+  alias Blockball.Util
 
   def join(room_id, player_id, name, opts \\ []) do
     room_id
@@ -44,7 +45,7 @@ defmodule Blockball.Game do
   end
 
   def create_room(name, mode) when mode in [:practice, :vs1, :vs2, :vs3, :vs4] do
-    room_id = random_id(6)
+    room_id = Util.random_id(6)
     pid = ensure_room(room_id, name: sanitize_name_for_room(name), mode: mode)
     {:ok, room_id, pid}
   end
@@ -93,7 +94,7 @@ defmodule Blockball.Game do
     |> String.slice(0, 12)
     |> String.upcase()
     |> case do
-      "" -> random_id(5)
+      "" -> Util.random_id(5)
       room -> room
     end
   end
@@ -105,7 +106,7 @@ defmodule Blockball.Game do
     |> String.trim()
     |> String.slice(0, 18)
     |> case do
-      "" -> "Player #{random_id(4)}"
+      "" -> "Player #{Util.random_id(4)}"
       value -> value
     end
   end
@@ -127,13 +128,5 @@ defmodule Blockball.Game do
       [{pid, _}] -> pid
       [] -> nil
     end
-  end
-
-  defp random_id(length) do
-    length
-    |> :crypto.strong_rand_bytes()
-    |> Base.url_encode64(padding: false)
-    |> String.slice(0, length)
-    |> String.upcase()
   end
 end

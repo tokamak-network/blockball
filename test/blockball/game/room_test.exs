@@ -5,7 +5,12 @@ defmodule Blockball.Game.RoomTest do
 
   test "first player joins a live practice room with a bot" do
     {:ok, reply} =
-      Game.join("practice-#{System.unique_integer([:positive])}", "player-1", "Alice")
+      Game.join(
+        "practice-#{System.unique_integer([:positive])}",
+        "player-1",
+        "Alice",
+        mode: :practice
+      )
 
     assert reply.spectator == false
     assert reply.team == :red
@@ -60,10 +65,10 @@ defmodule Blockball.Game.RoomTest do
 
   test "create_room and list_rooms exposes active rooms with metadata" do
     {:ok, room_id, _pid} =
-      Game.create_room("Lobby Showcase #{System.unique_integer([:positive])}", :public)
+      Game.create_room("Lobby Showcase #{System.unique_integer([:positive])}", :vs4)
 
     rooms = Game.list_rooms()
-    assert Enum.any?(rooms, fn r -> r.id == room_id and r.mode == "public" end)
+    assert Enum.any?(rooms, fn r -> r.id == room_id and r.mode == "vs4" end)
   end
 
   test "chat broadcasts to room subscribers" do
@@ -89,8 +94,8 @@ defmodule Blockball.Game.RoomTest do
   test "goal updates score and scorer goal count" do
     room = "goal-#{System.unique_integer([:positive])}"
 
-    pid = Game.ensure_room(room)
-    {:ok, _reply} = Game.join(room, "player-1", "Alice")
+    pid = Game.ensure_room(room, mode: :practice)
+    {:ok, _reply} = Game.join(room, "player-1", "Alice", mode: :practice)
 
     :sys.replace_state(pid, fn state ->
       state

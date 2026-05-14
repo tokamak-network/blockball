@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href={~p"/assets/app.css"} />
     <script id="blockball-auth-config" type="application/json"><%= Phoenix.HTML.raw(Jason.encode!(@auth_config)) %></script>
+    <script id="blockball-physics-config" type="application/json"><%= Phoenix.HTML.raw(Jason.encode!(@physics_config)) %></script>
     <script defer src={~p"/assets/app.js"}>
     </script>
   </head>
@@ -17,56 +18,34 @@
             LANDING
             ============================================================ --%>
       <section class="screen" data-screen="landing">
-        <header class="top-nav">
-          <span class="brand-mark">
-            <img class="brand-logo" src={~p"/images/logo.png"} alt="blockball" />
-            blockball
-          </span>
-          <nav>
-            <a href="#" data-action="goto-play">Play</a>
-          </nav>
-        </header>
+        <.top_nav>
+          <a href="#features">How it plays</a>
+          <a href="#" class="nav-cta" data-action="goto-play">Play</a>
+        </.top_nav>
 
         <div class="landing-stage">
           <div class="landing-hero">
             <div class="landing-copy">
-              <div class="landing-meta">
-                <span class="live-dot"></span>
-                <span>2 minute rooms / server physics / signed result</span>
-              </div>
+              <span class="landing-eyebrow">
+                <span class="live-dot" aria-hidden="true"></span>
+                Live · 2-minute rooms · server-signed result
+              </span>
 
-              <h1 class="logo">
-                <img class="hero-logo" src={~p"/images/logo.png"} alt="blockball" />
-                <span class="logo-text">block<span class="accent">ball</span></span>
+              <h1 class="landing-title">
+                Browser puck soccer,<br />
+                <span class="accent">tournament&#8209;ready.</span>
               </h1>
 
               <p class="landing-tagline">
-                Fast top-down puck soccer for browser rivals. Play the match on a real-time server, then keep the result as a chain-ready receipt.
+                Server-authoritative physics. Up to 4&#8239;v&#8239;4 in a room. Every match leaves a signed replay receipt.
               </p>
 
-              <div id="quick-match" class="landing-card" aria-label="Quick match actions">
+              <div class="landing-actions" aria-label="Quick match actions">
                 <button class="cta-button" data-action="goto-play">
-                  <span>Enter Room</span>
+                  <span>Enter a room</span>
                   <span class="arrow">→</span>
                 </button>
-              </div>
-
-              <div id="features" class="landing-features" aria-label="Match format">
-                <div class="feature">
-                  <span class="num">01</span>
-                  <strong>Team Physics</strong>
-                  <p>Wide field, circle players, puck-like ball, kick timing.</p>
-                </div>
-                <div class="feature">
-                  <span class="num">02</span>
-                  <strong>Live Rooms</strong>
-                  <p>Practice bot, public room list, chat, score clock.</p>
-                </div>
-                <div class="feature">
-                  <span class="num">03</span>
-                  <strong>Result Ledger</strong>
-                  <p>Replay hash, server signature, season ranking payload.</p>
-                </div>
+                <a class="landing-secondary" href="#features">How it plays</a>
               </div>
             </div>
 
@@ -88,11 +67,26 @@
                 <span class="puck"></span>
               </div>
               <div class="receipt-tape">
-                <span>REPLAY HASH</span>
-                <strong>0x7A9C...21F4</strong>
+                <span>Replay hash</span>
+                <strong>0x7A9C…21F4</strong>
               </div>
             </div>
           </div>
+
+          <dl id="features" class="landing-features" aria-label="Match format">
+            <div class="feature">
+              <dt>Team physics</dt>
+              <dd>Wide field, circle players, puck-like ball, kick timing.</dd>
+            </div>
+            <div class="feature">
+              <dt>Live rooms</dt>
+              <dd>Practice bot, public room list, chat, score clock.</dd>
+            </div>
+            <div class="feature">
+              <dt>Result ledger</dt>
+              <dd>Replay hash, server signature, season ranking payload.</dd>
+            </div>
+          </dl>
         </div>
       </section>
 
@@ -100,39 +94,18 @@
             SIGNUP
             ============================================================ --%>
       <section class="screen" data-screen="signup" hidden>
-        <header class="top-nav">
-          <span class="brand-mark">
-            <img class="brand-logo" src={~p"/images/logo.png"} alt="blockball" />
-            blockball
-          </span>
-          <nav>
-            <button class="ghost-button small" data-action="back-to-landing">Back</button>
-          </nav>
-        </header>
+        <.top_nav>
+          <button class="ghost-button small" data-action="back-to-landing">← Back</button>
+        </.top_nav>
 
         <div class="modal-stage">
-          <div class="modal-card auth-card">
-            <div class="auth-copy">
+          <div class="auth-card">
+            <div class="auth-intro">
               <p class="eyebrow"><span class="num">01</span> Player Account</p>
               <h2>Sign in before kickoff</h2>
               <p class="muted small">
-                Privy embedded wallet is the default path for players who do not know wallets yet. Browser wallets remain available for crypto-native players.
+                Email creates an embedded wallet. Browser wallets stay optional.
               </p>
-
-              <div class="auth-lanes" aria-label="Account capabilities">
-                <div>
-                  <strong>Embedded wallet</strong>
-                  <span>Email OTP now, Google/Discord through Privy app settings.</span>
-                </div>
-                <div>
-                  <strong>Gasless-ready</strong>
-                  <span>Profile stores wallet identity for future smart wallet and paymaster flows.</span>
-                </div>
-                <div>
-                  <strong>External wallet</strong>
-                  <span>MetaMask, Rabby, and Coinbase Wallet via injected EIP-1193 provider.</span>
-                </div>
-              </div>
             </div>
 
             <div class="auth-panel">
@@ -164,14 +137,23 @@
                 </button>
               </form>
 
-              <div class="auth-divider"><span>or</span></div>
-
-              <button type="button" class="primary-button auth-wide-button" data-action="connect-external-wallet">
-                Connect Browser Wallet
-              </button>
-              <button id="dev-auth-button" type="button" class="ghost-button auth-wide-button" data-action="dev-auth" hidden>
-                Use Local Dev Account
-              </button>
+              <details class="auth-more">
+                <summary>
+                  <span>Other sign-in options</span>
+                  <span class="auth-more-icon" aria-hidden="true">+</span>
+                </summary>
+                <div class="auth-more-body">
+                  <button type="button" class="secondary-button auth-wide-button" data-action="connect-external-wallet">
+                    Connect browser wallet
+                  </button>
+                  <button id="dev-auth-button" type="button" class="ghost-button auth-wide-button" data-action="dev-auth" hidden>
+                    Use local dev account
+                  </button>
+                  <p class="muted small auth-help">
+                    MetaMask, Rabby, and Coinbase Wallet via injected EIP-1193.
+                  </p>
+                </div>
+              </details>
 
               <p id="auth-status" class="auth-status muted small" aria-live="polite"></p>
               <div class="row end">
@@ -189,30 +171,25 @@
             NICKNAME
             ============================================================ --%>
       <section class="screen" data-screen="nickname" hidden>
-        <header class="top-nav">
-          <span class="brand-mark">
-            <img class="brand-logo" src={~p"/images/logo.png"} alt="blockball" />
-            blockball
-          </span>
-          <nav>
-            <span class="wallet-tag" id="nickname-wallet">Wallet · —</span>
-            <button class="ghost-button small" data-action="sign-out">Sign out</button>
-          </nav>
-        </header>
+        <.top_nav>
+          <span class="wallet-tag" id="nickname-wallet">Wallet · —</span>
+          <button class="ghost-button small" data-action="sign-out">Sign out</button>
+        </.top_nav>
 
         <div class="modal-stage">
           <div class="modal-card narrow">
             <p class="eyebrow"><span class="num">02</span> Match Registration</p>
             <h2>Pick a nickname</h2>
-            <p class="muted small">Shown to opponents and stamped on your match receipts.</p>
+            <p class="muted small">Visible to opponents and stamped on every match receipt.</p>
 
             <form id="nickname-form" class="stack">
               <label>
                 Nickname
-                <input id="nickname-input" name="nickname" maxlength="18" autocomplete="nickname" placeholder="e.g. NEON_K" required />
+                <input id="nickname-input" name="nickname" maxlength="18" minlength="2" autocomplete="nickname" placeholder="e.g. NEON_K" required />
+                <span class="field-hint">2–18 characters. Letters, numbers, _ and - only.</span>
               </label>
               <div class="row end">
-                <button type="button" class="ghost-button" data-action="back-to-landing">Back</button>
+                <button type="button" class="ghost-button" data-action="back-to-landing">← Back</button>
                 <button type="submit" class="cta-button">
                   <span>Continue</span>
                   <span class="arrow">→</span>
@@ -227,18 +204,12 @@
             LOBBY
             ============================================================ --%>
       <section class="screen" data-screen="lobby" hidden>
-        <header class="top-nav">
-          <span class="brand-mark">
-            <img class="brand-logo" src={~p"/images/logo.png"} alt="blockball" />
-            blockball
-          </span>
-          <nav>
-            <span class="wallet-tag" id="lobby-wallet">Wallet · —</span>
-            <span class="nick-tag">Player · <strong id="lobby-nick">—</strong></span>
-            <button class="ghost-button small" data-action="change-nick">Change</button>
-            <button class="ghost-button small" data-action="sign-out">Sign out</button>
-          </nav>
-        </header>
+        <.top_nav>
+          <span class="wallet-tag" id="lobby-wallet">Wallet · —</span>
+          <span class="nick-tag">Player · <strong id="lobby-nick">—</strong></span>
+          <button class="ghost-button small" data-action="change-nick">Change</button>
+          <button class="ghost-button small" data-action="sign-out">Sign out</button>
+        </.top_nav>
 
         <div class="modal-stage">
           <div class="modal-card wide">
@@ -247,12 +218,10 @@
                 <p class="eyebrow"><span class="num">03</span> Open Rooms</p>
                 <h2>Lobby</h2>
               </div>
-              <div class="lobby-stats">
-                <div class="stat">
-                  <strong id="lobby-meta">0 players in 0 rooms</strong>
-                  <span>active now</span>
-                </div>
-              </div>
+              <p class="lobby-meta-text">
+                <strong id="lobby-meta">0 players · 0 rooms</strong>
+                <span>active now</span>
+              </p>
             </div>
 
             <div class="lobby-grid">
@@ -275,14 +244,17 @@
 
               <aside class="lobby-actions">
                 <button class="cta-button" data-action="practice">
-                  <span>Practice vs Bot</span>
+                  <span>Practice vs bot</span>
                   <span class="arrow">→</span>
                 </button>
-                <button class="primary-button" data-action="open-create">Create Room</button>
-                <button class="ghost-button" data-action="refresh-rooms">↻ Refresh</button>
-                <div class="lobby-help">
-                  <p>Choose your team size (1v1–4v4) when creating a room. The host starts the match once everyone has joined.</p>
-                </div>
+                <button class="secondary-button" data-action="open-create">Create room</button>
+                <button class="ghost-button" data-action="refresh-rooms">
+                  <span aria-hidden="true">↻</span>
+                  Refresh
+                </button>
+                <p class="lobby-help">
+                  Pick team size (1v1–4v4) when creating a room. The host starts the match once everyone has joined.
+                </p>
               </aside>
             </div>
 
