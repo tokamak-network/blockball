@@ -20,10 +20,18 @@ ARG RUNNER_IMAGE="docker.io/debian:${DEBIAN_VERSION}"
 
 FROM ${BUILDER_IMAGE} AS builder
 
-# install build dependencies
+# install build dependencies (curl + ca-certificates are needed to fetch
+# the Foundry release tarball below)
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends build-essential git \
+  && apt-get install -y --no-install-recommends build-essential git curl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
+
+# Foundry's `cast` is invoked by Blockball.Onchain.* to read/write on-chain.
+# Pull just the cast binary from the official static release.
+ARG FOUNDRY_VERSION=v1.5.1
+RUN curl -fL "https://github.com/foundry-rs/foundry/releases/download/${FOUNDRY_VERSION}/foundry_${FOUNDRY_VERSION}_linux_amd64.tar.gz" \
+      | tar -xz -C /usr/local/bin cast \
+  && /usr/local/bin/cast --version
 
 # prepare build dir
 WORKDIR /app
@@ -83,6 +91,7 @@ ENV MIX_ENV="prod"
 
 # Only copy the final release from the build stage
 COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/blockball ./
+COPY --from=builder /usr/local/bin/cast /usr/local/bin/cast
 
 USER nobody
 
