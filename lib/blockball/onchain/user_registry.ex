@@ -120,10 +120,14 @@ defmodule Blockball.Onchain.UserRegistry do
       @logs_rpc_default
   end
 
+  # Sepolia deploy block of the active UserRegistry. Keeps eth_getLogs
+  # within a sane range when no explicit override is configured.
+  @deploy_block_default "0xa5fdf4"
+
   defp logs_from_block(_config) do
     System.get_env("BLOCKBALL_USER_REGISTRY_DEPLOY_BLOCK") ||
       Application.get_env(:blockball, :user_registry, [])[:deploy_block] ||
-      "earliest"
+      @deploy_block_default
   end
 
   def decode_event_logs(logs) when is_list(logs) do
