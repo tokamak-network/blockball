@@ -5,3 +5,13 @@ _build/
 deps/
 erl_crash.dump
 priv/static/assets/*.gz
+
+# Foundry — dependencies installed via `forge install` (pins live in contracts/foundry.lock)
+contracts/lib/
+contracts/cache/
+contracts/out/
+contracts/broadcast/
+
+# Local agent / harness state
+.omc/
+.omx/
