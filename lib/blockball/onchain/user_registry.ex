@@ -103,15 +103,47 @@ defmodule Blockball.Onchain.UserRegistry do
   @zero_bytes32 <<0::256>>
 
   def parse_lookup_output(output) when is_binary(output) do
-    lines = output |> String.split("\n", trim: true)
+    cleaned = String.trim(output)
 
-    with {:ok, identifier, rest_lines} <- pop_bytes32(lines),
-         nickname = join_nickname(rest_lines) do
-      if identifier == @zero_bytes32 and nickname == "" do
-        {:ok, :not_registered}
-      else
-        {:ok, %{identifier: identifier, nickname: nickname}}
-      end
+    cond do
+      cleaned == "" ->
+        {:error, :empty_lookup_output}
+
+      String.starts_with?(cleaned, "(") ->
+        parse_tuple_line(cleaned)
+
+      true ->
+        parse_lookup_lines(String.split(cleaned, "\n", trim: true))
+    end
+  end
+
+  defp parse_tuple_line(text) do
+    inner = text |> String.trim_leading("(") |> String.trim_trailing(")")
+
+    case String.split(inner, ",", parts: 2) do
+      [id_part, nick_part] ->
+        with {:ok, identifier} <- decode_bytes32(String.trim(id_part)) do
+          nickname = nick_part |> String.trim() |> strip_quotes()
+          finalize_lookup(identifier, nickname)
+        end
+
+      _ ->
+        {:error, {:invalid_lookup_output, text}}
+    end
+  end
+
+  defp parse_lookup_lines(lines) do
+    with {:ok, identifier, rest_lines} <- pop_bytes32(lines) do
+      nickname = join_nickname(rest_lines)
+      finalize_lookup(identifier, nickname)
+    end
+  end
+
+  defp finalize_lookup(identifier, nickname) do
+    if identifier == @zero_bytes32 and nickname == "" do
+      {:ok, :not_registered}
+    else
+      {:ok, %{identifier: identifier, nickname: nickname}}
     end
   end
 

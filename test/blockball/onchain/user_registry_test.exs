@@ -77,6 +77,21 @@ defmodule Blockball.Onchain.UserRegistryTest do
       assert {:error, :invalid_bytes32} =
                UserRegistry.parse_lookup_output("not-hex\nNeonK")
     end
+
+    test "decodes single-line tuple form for unregistered wallet" do
+      zero = "0x" <> String.duplicate("0", 64)
+
+      assert {:ok, :not_registered} =
+               UserRegistry.parse_lookup_output("(#{zero}, \"\")\n")
+    end
+
+    test "decodes single-line tuple form for registered wallet" do
+      id_hex = "0x" <> String.duplicate("ab", 32)
+      {:ok, expected} = Base.decode16(String.duplicate("ab", 32), case: :mixed)
+
+      assert {:ok, %{identifier: ^expected, nickname: "NeonK"}} =
+               UserRegistry.parse_lookup_output("(#{id_hex}, \"NeonK\")\n")
+    end
   end
 
   describe "parse_send_output/1" do
