@@ -1,6 +1,7 @@
-const NICK_STORAGE_KEY = "blockball-name";
 const AUTH_STORAGE_KEY = "blockball-auth";
+const MODE_STORAGE_KEY = "blockball-mode";
 const LOBBY_POLL_MS = 5000;
+const VALID_MODES = ["casual", "ranked"];
 
 const authConfig = readJsonConfig("#blockball-auth-config");
 const physicsConfig = readJsonConfig("#blockball-physics-config");
@@ -32,9 +33,6 @@ const privyCodeForm = document.querySelector("#privy-code-form");
 const privyEmailInput = document.querySelector("#privy-email-input");
 const privyCodeInput = document.querySelector("#privy-code-input");
 const authStatus = document.querySelector("#auth-status");
-const authProfileCard = document.querySelector("#auth-profile-card");
-const authProfileName = document.querySelector("#auth-profile-name");
-const authProfileWallet = document.querySelector("#auth-profile-wallet");
 const authContinueButton = document.querySelector("#auth-continue-button");
 const devAuthButton = document.querySelector("#dev-auth-button");
 const createRoomPanel = document.querySelector("#create-room-panel");
@@ -83,7 +81,9 @@ const chatInput = document.querySelector("#chat-input");
 
 const state = {
   screen: "landing",
-  nickname: localStorage.getItem(NICK_STORAGE_KEY) || "",
+  mode: loadMode(),
+  nickname: "",
+  nicknameOnchain: false,
   profile: loadAuthProfile(),
   authToken: null,
   socket: null,
@@ -149,6 +149,26 @@ function loadAuthProfile() {
   }
 }
 
+function loadMode() {
+  const stored = localStorage.getItem(MODE_STORAGE_KEY);
+  return VALID_MODES.includes(stored) ? stored : "casual";
+}
+
+function setMode(mode) {
+  if (!VALID_MODES.includes(mode)) return;
+  state.mode = mode;
+  localStorage.setItem(MODE_STORAGE_KEY, mode);
+  renderModeChrome();
+}
+
+function hasRankedAccount() {
+  return Boolean(state.profile && state.profile.address);
+}
+
+function isRanked() {
+  return state.mode === "ranked";
+}
+
 function hasPrivyConfig() {
   return Boolean(authConfig.privyAppId && authConfig.privyClientId);
 }
@@ -184,33 +204,84 @@ function setAuthProfile(profile, opts = {}) {
 function clearAuthProfile() {
   state.profile = null;
   state.authToken = null;
+  state.nicknameOnchain = false;
   localStorage.removeItem(AUTH_STORAGE_KEY);
   renderAccountState();
 }
 
 function renderAccountState() {
   const profile = state.profile;
-  const label = profile ? `${authDisplayName(profile)} · ${shortAddress(profile.address)}` : "Wallet · —";
 
   if (lobbyWallet) lobbyWallet.textContent = profile ? `Wallet · ${shortAddress(profile.address)}` : "Wallet · —";
   if (nicknameWallet) nicknameWallet.textContent = profile ? `Wallet · ${shortAddress(profile.address)}` : "Wallet · —";
 
-  if (authProfileCard) authProfileCard.hidden = !profile;
-  if (authProfileName) authProfileName.textContent = authDisplayName(profile);
-  if (authProfileWallet) authProfileWallet.textContent = label;
-  if (authContinueButton) authContinueButton.hidden = !profile;
+  if (authContinueButton) {
+    const ready = profile && (!isRanked() || hasRankedAccount());
+    authContinueButton.hidden = !profile;
+    authContinueButton.disabled = !ready;
+  }
   if (devAuthButton) devAuthButton.hidden = !authConfig.devAuthEnabled;
 
-  if (!profile && state.screen === "signup") {
-    setAuthStatus(
-      hasPrivyConfig()
-        ? "Use email OTP to create a Privy embedded wallet, or connect an injected wallet."
-        : "Set PRIVY_APP_ID and PRIVY_CLIENT_ID to enable Privy email login. Local dev account is available in development."
-    );
+  if (state.screen === "signup") {
+    if (!profile) {
+      setAuthStatus(
+        hasPrivyConfig()
+          ? "Use email OTP to create a Privy embedded wallet, or connect an injected wallet."
+          : "Set PRIVY_APP_ID and PRIVY_CLIENT_ID to enable Privy email login. Local dev account is available in development."
+      );
+    } else {
+      setAuthStatus("Wallet verified — continue to ranked lobby.");
+    }
+  }
+
+  renderModeChrome();
+}
+
+function renderModeChrome() {
+  const ranked = isRanked();
+  const tagText = ranked ? "Ranked" : "Casual";
+  const tagClass = ranked ? "mode-tag ranked" : "mode-tag casual";
+
+  const lobbyTag = document.querySelector("#lobby-mode-tag");
+  if (lobbyTag) {
+    lobbyTag.className = tagClass;
+    lobbyTag.textContent = tagText;
+  }
+  const nickTag = document.querySelector("#nickname-mode-tag");
+  if (nickTag) {
+    nickTag.className = tagClass;
+    nickTag.textContent = tagText;
+    nickTag.hidden = false;
+  }
+  if (lobbyWallet) lobbyWallet.hidden = !ranked;
+  if (nicknameWallet) nicknameWallet.hidden = !ranked;
+
+  const signoutBtns = document.querySelectorAll("#nickname-signout-btn, #lobby-signout-btn");
+  signoutBtns.forEach((b) => {
+    b.hidden = !ranked;
+  });
+
+  const profileBtn = document.querySelector("#lobby-profile-btn");
+  if (profileBtn) profileBtn.hidden = !ranked;
+
+  const createLabel = document.querySelector("#create-room-mode-label");
+  if (createLabel) createLabel.textContent = ranked ? "Ranked" : "Casual";
+
+  // Practice rooms are casual-only — hide the shortcut in ranked.
+  const practiceBtn = document.querySelector('[data-action="practice"]');
+  if (practiceBtn) practiceBtn.hidden = ranked;
+
+  const help = document.querySelector(".lobby-help");
+  if (help) {
+    help.textContent = ranked
+      ? "Ranked rooms need every player to verify a wallet. Host starts when the roster is full."
+      : "Casual rooms accept any nickname. The host starts the match once everyone has joined.";
   }
 }
 
 function registrationPayload() {
+  // Casual rooms join without a wallet registration — the server allows nil.
+  if (!isRanked()) return null;
   if (!state.profile) return null;
 
   return {
@@ -306,12 +377,17 @@ async function buildPrivyProfile(user, privy, mod) {
   if (!wallet) throw new Error("Privy did not return an embedded Ethereum wallet.");
 
   const { entropyId, entropyIdVerifier } = mod.getEntropyDetailsFromUser(currentUser);
-  await privy.embeddedWallet.getEthereumProvider({
+  const ethereumProvider = await privy.embeddedWallet.getEthereumProvider({
     wallet,
     entropyId,
     entropyIdVerifier
   });
 
+  const challenge = await requestWalletChallenge(wallet.address);
+  const signature = await ethereumProvider.request({
+    method: "personal_sign",
+    params: [challenge.message, wallet.address]
+  });
   const token = await privy.getAccessToken().catch(() => null);
 
   return {
@@ -322,7 +398,11 @@ async function buildPrivyProfile(user, privy, mod) {
       privyUserId: currentUser.id,
       email: extractPrivyEmail(currentUser),
       address: wallet.address,
-      issuedAt: new Date().toISOString()
+      signedMessage: challenge.message,
+      signature,
+      issuedAt: challenge.issued_at,
+      challengeNonce: challenge.nonce,
+      challengeExpiresAt: challenge.expires_at
     }
   };
 }
@@ -337,6 +417,11 @@ async function hydratePrivySession() {
     const { profile, token } = await buildPrivyProfile(user, privy, mod);
     setAuthProfile(profile, { token });
     setAuthStatus("Privy session restored.");
+    if (isRanked()) {
+      try {
+        await syncOnchainAccount();
+      } catch (_) {}
+    }
   } catch (err) {
     console.warn("Privy session restore failed:", err);
   }
@@ -351,6 +436,7 @@ async function submitPrivyEmail(event) {
     setAuthStatus("Sending Privy verification code…");
     const { privy } = await getPrivyClient();
     await privy.auth.email.sendCode(email);
+    privyEmailForm.hidden = true;
     privyCodeForm.hidden = false;
     setAuthStatus(`Verification code sent to ${email}.`);
     setTimeout(() => privyCodeInput.focus(), 30);
@@ -373,10 +459,164 @@ async function submitPrivyCode(event) {
     const { profile, token } = await buildPrivyProfile(session.user, privy, mod);
     setAuthProfile(profile, { token });
     setAuthStatus("Privy embedded wallet ready.");
+    try {
+      await syncOnchainAccount();
+    } catch (_) {
+      return;
+    }
     continueAfterAuth();
   } catch (err) {
     console.warn(err);
     setAuthStatus(err.message || "Verification failed.");
+  }
+}
+
+async function requestWalletChallenge(address) {
+  const res = await fetch("/api/wallet/challenge", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ wallet_address: address })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok || !data.message) {
+    throw new Error(data.error || "Could not create wallet challenge.");
+  }
+  return data;
+}
+
+const WALLET_API_ERRORS = {
+  invalid_privy_token: "Privy session expired. Sign in again.",
+  invalid_wallet_address: "Wallet address looks malformed.",
+  nickname_too_short: "Nickname must be at least 2 characters.",
+  nickname_too_long: "Nickname must be at most 18 characters.",
+  nickname_invalid_chars: "Nickname can only contain letters, numbers, and underscores.",
+  nickname_invalid: "Nickname is invalid.",
+  invalid_identifier: "Email is required.",
+  nickname_taken: "That nickname is already taken.",
+  contract_address_not_configured: "On-chain registry not configured yet.",
+  rpc_url_not_configured: "On-chain RPC not configured.",
+  submitter_private_key_not_configured: "Server submitter key not configured.",
+  onchain_call_failed: "On-chain call failed. Try again shortly.",
+  onchain_response_invalid: "On-chain response unreadable. Try again."
+};
+
+async function walletApi(path, body) {
+  const headers = { "content-type": "application/json" };
+  if (state.authToken) headers["authorization"] = `Bearer ${state.authToken}`;
+  const res = await fetch(path, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body || {})
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    const code = data && data.error;
+    const message = (code && WALLET_API_ERRORS[code]) || `Request failed (${res.status}).`;
+    const err = new Error(message);
+    err.code = code;
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+async function persistRankedNickname(nickname) {
+  const profile = state.profile;
+  if (!profile || !profile.address) throw new Error("Wallet not registered.");
+  if (!state.authToken) throw new Error("Privy session expired. Sign in again.");
+
+  if (state.nicknameOnchain) {
+    showToast("Updating nickname on-chain…");
+    const data = await walletApi("/api/wallet/update-nickname", {
+      wallet_address: profile.address,
+      nickname
+    });
+    return data.nickname || nickname;
+  }
+
+  if (!profile.email) throw new Error("Email is required to register ranked account.");
+  showToast("Registering on-chain…");
+  const data = await walletApi("/api/wallet/register", {
+    wallet_address: profile.address,
+    email: profile.email,
+    nickname
+  });
+  return data.nickname || nickname;
+}
+
+async function openProfile() {
+  if (!state.profile || !state.profile.address) {
+    showToast("Sign in to view your profile.");
+    return;
+  }
+  showScreen("profile");
+  await loadProfile();
+}
+
+function setProfileField(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value || "—";
+}
+
+async function loadProfile() {
+  const profile = state.profile;
+  const status = document.getElementById("profile-status");
+  setProfileField("profile-wallet", profile && profile.address);
+  setProfileField("profile-nickname", state.nickname);
+  setProfileField("profile-identifier", "—");
+  setProfileField("profile-contract", "—");
+  setProfileField("profile-chain", "—");
+  if (status) status.textContent = "Loading on-chain record…";
+
+  if (!profile || !profile.address || !state.authToken) {
+    if (status) status.textContent = "Privy session required.";
+    return;
+  }
+
+  try {
+    const data = await walletApi("/api/wallet/me", { wallet_address: profile.address });
+    setProfileField("profile-wallet", data.wallet_address || profile.address);
+    setProfileField("profile-contract", data.contract_address);
+    setProfileField("profile-chain", data.chain_id ? `Sepolia (${data.chain_id})` : "—");
+    if (data.registered) {
+      setProfileField("profile-nickname", data.nickname);
+      setProfileField("profile-identifier", data.identifier_hash);
+      state.nickname = data.nickname || state.nickname;
+      state.nicknameOnchain = true;
+      if (status) status.textContent = "On-chain record loaded.";
+    } else {
+      setProfileField("profile-nickname", "Not registered");
+      setProfileField("profile-identifier", "—");
+      state.nicknameOnchain = false;
+      if (status) status.textContent = "Wallet is not registered yet.";
+    }
+  } catch (err) {
+    console.warn("profile load failed:", err);
+    if (status) status.textContent = err.message || "Could not load profile.";
+  }
+}
+
+async function syncOnchainAccount() {
+  const profile = state.profile;
+  if (!isRanked() || !profile || !profile.address || !state.authToken) return null;
+  setAuthStatus("Checking on-chain registration…");
+  try {
+    const data = await walletApi("/api/wallet/lookup", { wallet_address: profile.address });
+    if (data.registered && data.nickname) {
+      state.nickname = data.nickname;
+      state.nicknameOnchain = true;
+      if (lobbyNick) lobbyNick.textContent = data.nickname;
+      setAuthStatus("Welcome back.");
+    } else {
+      state.nicknameOnchain = false;
+      setAuthStatus("Pick a nickname to finish ranked sign-up.");
+    }
+    return data;
+  } catch (err) {
+    console.warn("on-chain lookup failed:", err);
+    state.nicknameOnchain = false;
+    setAuthStatus(err.message || "Could not verify on-chain registration.");
+    throw err;
   }
 }
 
@@ -393,9 +633,8 @@ async function connectExternalWallet() {
     const address = accounts && accounts[0];
     if (!address) throw new Error("No wallet account returned.");
 
-    const nonce = Math.random().toString(36).slice(2);
-    const issuedAt = new Date().toISOString();
-    const signedMessage = `Blockball registration\nAddress: ${address}\nIssued At: ${issuedAt}\nNonce: ${nonce}`;
+    const challenge = await requestWalletChallenge(address);
+    const signedMessage = challenge.message;
     const signature = await provider.request({
       method: "personal_sign",
       params: [signedMessage, address]
@@ -416,7 +655,9 @@ async function connectExternalWallet() {
       chainId,
       signedMessage,
       signature,
-      issuedAt
+      issuedAt: challenge.issued_at,
+      challengeNonce: challenge.nonce,
+      challengeExpiresAt: challenge.expires_at
     });
     setAuthStatus(`${providerName} registered.`);
     continueAfterAuth();
@@ -432,7 +673,7 @@ function useDevAuth() {
   setAuthProfile({
     kind: "dev",
     provider: "Local Dev Account",
-    address: `0xdev${id}`,
+    address: `0x${id}${"0".repeat(32)}`,
     issuedAt: new Date().toISOString()
   });
   setAuthStatus("Local dev account registered.");
@@ -445,9 +686,16 @@ function continueAfterAuth() {
     return;
   }
 
+  // Ranked flows require a verified wallet-backed account before leaving signup.
+  if (isRanked() && !hasRankedAccount()) {
+    setAuthStatus("Verify a wallet to unlock ranked rooms.");
+    showScreen("signup");
+    return;
+  }
+
   if (!state.nickname) {
     showScreen("nickname");
-    setTimeout(() => nicknameInput.focus(), 30);
+    setTimeout(() => nicknameInput && nicknameInput.focus(), 30);
     return;
   }
 
@@ -465,11 +713,12 @@ function signOut() {
   if (state.socket) leaveGame();
   clearAuthProfile();
   state.nickname = "";
+  state.nicknameOnchain = false;
   state.pendingRoomId = null;
-  localStorage.removeItem(NICK_STORAGE_KEY);
   nicknameInput.value = "";
   if (lobbyNick) lobbyNick.textContent = "—";
-  showScreen("signup");
+  setMode("casual");
+  showScreen("landing");
 }
 
 function ensureAudioCtx() {
@@ -643,17 +892,22 @@ const fallbackSnapshot = {
 };
 
 function urlForScreen(name, roomId) {
+  const modeSeg = state.mode || "casual";
   switch (name) {
     case "landing":
       return "/";
     case "signup":
       return "/signup";
+    case "profile":
+      return "/profile";
     case "nickname":
-      return "/play";
+      return `/play/${modeSeg}`;
     case "lobby":
-      return "/lobby";
+      return `/lobby/${modeSeg}`;
     case "game":
-      return roomId ? `/play/${encodeURIComponent(roomId)}` : "/play";
+      return roomId
+        ? `/play/${modeSeg}/${encodeURIComponent(roomId)}`
+        : `/play/${modeSeg}`;
     default:
       return "/";
   }
@@ -687,32 +941,62 @@ function showScreen(name, opts = {}) {
 function parseRoute(pathname) {
   if (!pathname || pathname === "/") return { screen: "landing" };
   if (pathname === "/signup" || pathname === "/signup/") return { screen: "signup" };
-  if (pathname === "/play" || pathname === "/play/") return { screen: "play-entry" };
-  if (pathname === "/lobby" || pathname === "/lobby/") return { screen: "lobby" };
-  const match = pathname.match(/^\/play\/([^\/]+)\/?$/);
-  if (match) return { screen: "game", roomId: decodeURIComponent(match[1]) };
+  if (pathname === "/profile" || pathname === "/profile/") return { screen: "profile" };
+
+  let m = pathname.match(/^\/play\/(casual|ranked)\/([^\/]+)\/?$/);
+  if (m) return { screen: "game", mode: m[1], roomId: decodeURIComponent(m[2]) };
+
+  m = pathname.match(/^\/play\/(casual|ranked)\/?$/);
+  if (m) return { screen: "play-entry", mode: m[1] };
+
+  m = pathname.match(/^\/lobby\/(casual|ranked)\/?$/);
+  if (m) return { screen: "lobby", mode: m[1] };
+
+  if (pathname === "/play" || pathname === "/play/")
+    return { screen: "play-entry", mode: state.mode };
+  if (pathname === "/lobby" || pathname === "/lobby/")
+    return { screen: "lobby", mode: state.mode };
+
+  m = pathname.match(/^\/play\/([^\/]+)\/?$/);
+  if (m) return { screen: "game", mode: state.mode, roomId: decodeURIComponent(m[1]) };
+
   return { screen: "landing" };
 }
 
 function applyRoute(route, opts = {}) {
+  if (route.mode) setMode(route.mode);
+  // The signup screen is meaningful only for the ranked flow.
+  if (route.screen === "signup") setMode("ranked");
+
   if (route.screen === "play-entry") {
     openPlayEntry({ pushUrl: false, ...opts });
     return;
   }
 
-  if (route.screen === "lobby" && !state.profile) {
-    showScreen("signup", { replaceUrl: true });
-    return;
-  }
-
-  if (route.screen === "lobby" && !state.nickname) {
-    showScreen("nickname", { replaceUrl: true });
+  if (route.screen === "lobby") {
+    if (isRanked() && !state.profile) {
+      showScreen("signup", { replaceUrl: true });
+      return;
+    }
+    if (isRanked() && !hasRankedAccount()) {
+      showScreen("signup", { replaceUrl: true });
+      return;
+    }
+    if (!state.nickname) {
+      showScreen("nickname", { replaceUrl: true });
+      return;
+    }
+    showScreen("lobby", { pushUrl: false, ...opts });
     return;
   }
 
   if (route.screen === "game") {
     state.pendingRoomId = route.roomId;
-    if (!state.profile) {
+    if (isRanked() && !state.profile) {
+      showScreen("signup", { replaceUrl: true });
+      return;
+    }
+    if (isRanked() && !hasRankedAccount()) {
       showScreen("signup", { replaceUrl: true });
       return;
     }
@@ -725,18 +1009,33 @@ function applyRoute(route, opts = {}) {
     return;
   }
 
+  if (route.screen === "profile") {
+    if (!state.profile) {
+      showScreen("signup", { replaceUrl: true });
+      return;
+    }
+    showScreen("profile", { pushUrl: false, ...opts });
+    loadProfile();
+    return;
+  }
+
   showScreen(route.screen, { pushUrl: false, ...opts });
 }
 
 function openPlayEntry(opts = {}) {
-  if (!state.profile) {
+  if (isRanked() && !state.profile) {
+    showScreen("signup", opts);
+    return;
+  }
+
+  if (isRanked() && !hasRankedAccount()) {
     showScreen("signup", opts);
     return;
   }
 
   if (!state.nickname) {
     showScreen("nickname", opts);
-    setTimeout(() => nicknameInput.focus(), 30);
+    setTimeout(() => nicknameInput && nicknameInput.focus(), 30);
     return;
   }
 
@@ -777,15 +1076,21 @@ async function refreshRooms() {
 }
 
 function renderRooms() {
-  const totalPlayers = state.rooms.reduce((acc, r) => acc + (r.player_count || 0), 0);
-  lobbyMeta.textContent = `${totalPlayers} player${totalPlayers === 1 ? "" : "s"} · ${state.rooms.length} room${state.rooms.length === 1 ? "" : "s"}`;
+  // Casual lobby hides ranked rooms and vice versa. Practice rooms are forced
+  // casual on the server, so they only show in the casual lobby.
+  const visible = state.rooms.filter((r) => Boolean(r.ranked) === isRanked());
+  const totalPlayers = visible.reduce((acc, r) => acc + (r.player_count || 0), 0);
+  lobbyMeta.textContent = `${totalPlayers} player${totalPlayers === 1 ? "" : "s"} · ${visible.length} room${visible.length === 1 ? "" : "s"}`;
 
-  if (!state.rooms.length) {
-    roomRows.innerHTML = `<tr class="empty"><td colspan="5">No active rooms. Start a practice match or create one.</td></tr>`;
+  if (!visible.length) {
+    const blurb = isRanked()
+      ? "No ranked rooms open. Create one or invite a verified wallet player."
+      : "No casual rooms open. Start a practice match or create one.";
+    roomRows.innerHTML = `<tr class="empty"><td colspan="6">${blurb}</td></tr>`;
     return;
   }
 
-  roomRows.innerHTML = state.rooms
+  roomRows.innerHTML = visible
     .map((room) => {
       const modeClass = room.mode === "practice" ? "practice" : "public";
       const modeLabel = MODE_LABELS[room.mode] || room.mode;
@@ -793,6 +1098,9 @@ function renderRooms() {
       const status = room.status === "live" ? "Live" : room.status === "complete" ? "Result" : "Waiting";
       const canJoin = !(room.mode === "practice" && room.player_count >= 1);
       const joinLabel = room.mode === "practice" ? "Watch" : room.player_count >= room.capacity ? "Spectate" : "Join";
+      const typeTag = room.ranked
+        ? '<span class="mode-tag ranked" title="Ranked receipts are recorded only after chain confirmation">Ranked</span>'
+        : '<span class="mode-tag casual" title="Not recorded">Casual</span>';
       return `
         <tr>
           <td>
@@ -800,6 +1108,7 @@ function renderRooms() {
             <span class="room-id-mini">${escapeHtml(room.id)}</span>
           </td>
           <td><span class="mode-tag ${modeClass}">${modeLabel}</span></td>
+          <td>${typeTag}</td>
           <td><span class="player-meter">${room.player_count} / ${room.capacity}</span></td>
           <td><span class="status-cell ${statusClass}">${status}</span></td>
           <td><button class="cta-button join-btn" data-action="join-room" data-room="${escapeHtml(room.id)}" ${canJoin ? "" : "disabled"}>${joinLabel}</button></td>
@@ -809,11 +1118,11 @@ function renderRooms() {
     .join("");
 }
 
-async function createRoom(name, mode) {
+async function createRoom(name, mode, ranked = false) {
   const res = await fetch("/api/rooms", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, mode })
+    body: JSON.stringify({ name, mode, ranked })
   });
 
   if (!res.ok) throw new Error(`Create failed: ${res.status}`);
@@ -823,7 +1132,8 @@ async function createRoom(name, mode) {
 async function startPractice() {
   try {
     const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
-    const data = await createRoom(`Practice ${suffix}`, "practice");
+    // Practice rooms are always casual — the server enforces this regardless.
+    const data = await createRoom(`Practice ${suffix}`, "practice", false);
     enterGame(data.room_id);
   } catch (err) {
     showToast("Could not start practice room.");
@@ -835,10 +1145,12 @@ async function submitCreate(event) {
   event.preventDefault();
   const name = createRoomName.value.trim();
   const mode = createRoomMode.value;
+  // Match type follows the active lobby — no per-room toggle in the form.
+  const ranked = isRanked() && mode !== "practice";
   if (!name) return;
 
   try {
-    const data = await createRoom(name, mode);
+    const data = await createRoom(name, mode, ranked);
     createRoomPanel.hidden = true;
     createRoomForm.reset();
     enterGame(data.room_id);
@@ -849,16 +1161,23 @@ async function submitCreate(event) {
 }
 
 function enterGame(roomId, opts = {}) {
-  if (!state.profile) {
+  if (isRanked() && !state.profile) {
     state.pendingRoomId = roomId;
     showScreen("signup");
+    return;
+  }
+
+  if (isRanked() && !hasRankedAccount()) {
+    state.pendingRoomId = roomId;
+    showScreen("signup");
+    showToast("Verify a wallet to join ranked rooms.");
     return;
   }
 
   if (!state.nickname) {
     state.pendingRoomId = roomId;
     showScreen("nickname");
-    setTimeout(() => nicknameInput.focus(), 30);
+    setTimeout(() => nicknameInput && nicknameInput.focus(), 30);
     return;
   }
 
@@ -1006,6 +1325,26 @@ function handleSocketMessage(frame) {
   if (event === "receipt") {
     state.receipts = [payload.receipt, ...state.receipts].slice(0, 8);
     state.leaderboard = payload.leaderboard || state.leaderboard;
+    showToast("Signed ranked receipt ready — pending chain confirmation.");
+    return;
+  }
+
+  if (event === "receipt_status") {
+    if (payload && payload.status === "chain_confirmed") {
+      state.receipts = state.receipts.map((r) =>
+        r.match_id === payload.match_id
+          ? { ...r, status: "chain_confirmed", recorded: true, recorded_on_chain: true, tx_hash: payload.tx_hash, block_number: payload.block_number }
+          : r
+      );
+      renderReceiptStatus();
+      showToast("Recorded on-chain.");
+    } else if (payload && payload.receipt) {
+      state.receipts = state.receipts.map((r) =>
+        r.match_id === payload.match_id ? { ...r, status: payload.status, fallback_available: true } : r
+      );
+      renderReceiptStatus();
+      showToast("Submission failed — signed fallback receipt available.");
+    }
     return;
   }
 
@@ -1238,7 +1577,37 @@ function renderMatchResult(match) {
   }
   if (matchResultRed) matchResultRed.textContent = red;
   if (matchResultBlue) matchResultBlue.textContent = blue;
+  renderReceiptStatus();
   matchResult.hidden = false;
+}
+
+function renderReceiptStatus() {
+  const statusEl = document.querySelector("#match-result-receipt-status");
+  if (!statusEl) return;
+  if (!isRanked()) {
+    statusEl.textContent = "Casual match — no on-chain record.";
+    statusEl.className = "receipt-status casual";
+    return;
+  }
+  const receipt = state.receipts[0];
+  if (!receipt) {
+    statusEl.textContent = "Preparing ranked receipt…";
+    statusEl.className = "receipt-status pending";
+    return;
+  }
+  if (receipt.recorded_on_chain || receipt.status === "chain_confirmed") {
+    const tx = receipt.tx_hash ? ` · ${shortAddress(receipt.tx_hash)}` : "";
+    statusEl.textContent = `Recorded on-chain${tx}`;
+    statusEl.className = "receipt-status confirmed";
+    return;
+  }
+  if (receipt.fallback_available || receipt.status === "submission_failed_permissionless_available") {
+    statusEl.textContent = "Signed receipt ready · submission failed · fallback available";
+    statusEl.className = "receipt-status failed";
+    return;
+  }
+  statusEl.textContent = "Signed receipt ready · pending chain confirmation";
+  statusEl.className = "receipt-status pending";
 }
 
 function escapeHtml(value) {
@@ -1975,6 +2344,19 @@ function handleAction(action, dataset) {
     case "goto-play":
       openPlayEntry();
       break;
+    case "play-casual":
+      setMode("casual");
+      openPlayEntry();
+      break;
+    case "play-ranked":
+      setMode("ranked");
+      clearAuthProfile();
+      privyEmailForm.hidden = false;
+      privyCodeForm.hidden = true;
+      privyEmailInput.value = "";
+      privyCodeInput.value = "";
+      showScreen("signup");
+      break;
     case "auth-continue":
       continueAfterAuth();
       break;
@@ -2018,6 +2400,12 @@ function handleAction(action, dataset) {
     case "back-to-lobby":
       leaveGame();
       break;
+    case "open-profile":
+      openProfile();
+      break;
+    case "back-to-lobby-from-profile":
+      showScreen("lobby");
+      break;
   }
 }
 
@@ -2043,17 +2431,37 @@ function bindActionDelegate() {
 }
 
 function bindNicknameForm() {
-  nicknameForm.addEventListener("submit", (event) => {
+  nicknameForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const value = nicknameInput.value.trim().slice(0, 18);
     if (!value) return;
-    if (!state.profile) {
+    if (isRanked() && !state.profile) {
       showScreen("signup");
       return;
     }
-    state.nickname = value;
-    localStorage.setItem(NICK_STORAGE_KEY, value);
-    lobbyNick.textContent = value;
+    if (isRanked() && !hasRankedAccount()) {
+      showScreen("signup");
+      showToast("Verify a wallet to join ranked rooms.");
+      return;
+    }
+
+    const submitBtn = nicknameForm.querySelector("button[type=submit]");
+    if (isRanked()) {
+      if (submitBtn) submitBtn.disabled = true;
+      try {
+        const resolved = await persistRankedNickname(value);
+        state.nickname = resolved;
+        state.nicknameOnchain = true;
+      } catch (err) {
+        showToast(err.message || "Could not save nickname.");
+        if (submitBtn) submitBtn.disabled = false;
+        return;
+      }
+      if (submitBtn) submitBtn.disabled = false;
+    } else {
+      state.nickname = value;
+    }
+    lobbyNick.textContent = state.nickname;
 
     if (state.pendingRoomId) {
       const roomId = state.pendingRoomId;
@@ -2186,11 +2594,6 @@ function boot() {
   draw();
   renderAccountState();
   hydratePrivySession();
-
-  if (state.nickname) {
-    lobbyNick.textContent = state.nickname;
-    nicknameInput.value = state.nickname;
-  }
 
   applyRoute(parseRoute(location.pathname));
   initCourtPreviewAnimation();

@@ -18,31 +18,25 @@
             LANDING
             ============================================================ --%>
       <section class="screen" data-screen="landing">
-        <.top_nav>
-          <a href="#" class="nav-cta" data-action="goto-play">Play</a>
-        </.top_nav>
+        <.top_nav />
+
 
         <div class="landing-stage">
           <div class="landing-hero">
             <div class="landing-copy">
-              <span class="landing-eyebrow">
-                <span class="live-dot" aria-hidden="true"></span>
-                Live · 2-minute rooms · server-signed result
-              </span>
-
               <h1 class="landing-title">
-                Browser puck soccer,<br />
-                <span class="accent">tournament&#8209;ready.</span>
+                Pure-skill soccer.<br />
+                <span class="accent">On the record.</span>
               </h1>
 
-              <p class="landing-tagline">
-                Server-authoritative physics. Up to 4&#8239;v&#8239;4 in a room. Every match leaves a signed replay receipt.
-              </p>
-
-              <div class="landing-actions" aria-label="Quick match actions">
-                <button class="cta-button" data-action="goto-play">
-                  <span>Enter a room</span>
-                  <span class="arrow">→</span>
+              <div class="landing-actions landing-actions-split" aria-label="Quick match actions">
+                <button class="cta-button secondary" data-action="play-casual">
+                  <span class="cta-title">Play</span>
+                  <span class="cta-sub">No sign-up needed</span>
+                </button>
+                <button class="cta-button" data-action="play-ranked">
+                  <span class="cta-title">Compete</span>
+                  <span class="cta-sub">Sign-up required</span>
                 </button>
               </div>
             </div>
@@ -95,20 +89,14 @@
         <div class="modal-stage">
           <div class="auth-card">
             <div class="auth-intro">
-              <p class="eyebrow"><span class="num">01</span> Player Account</p>
+              <p class="eyebrow"><span class="num">01</span> Ranked Account</p>
               <h2>Sign in before kickoff</h2>
               <p class="muted small">
-                Email creates an embedded wallet. Browser wallets stay optional.
+                Ranked play needs a server-verified wallet-backed account. Casual matches do not require this step.
               </p>
             </div>
 
             <div class="auth-panel">
-              <div id="auth-profile-card" class="auth-profile-card" hidden>
-                <span class="auth-pill">Registered</span>
-                <strong id="auth-profile-name">—</strong>
-                <span id="auth-profile-wallet">—</span>
-              </div>
-
               <form id="privy-email-form" class="stack">
                 <label>
                   Email
@@ -125,33 +113,12 @@
                   Verification code
                   <input id="privy-code-input" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456" />
                 </label>
-                <button type="submit" class="cta-button">
-                  <span>Create embedded wallet</span>
-                  <span class="arrow">→</span>
-                </button>
               </form>
 
-              <details class="auth-more">
-                <summary>
-                  <span>Other sign-in options</span>
-                  <span class="auth-more-icon" aria-hidden="true">+</span>
-                </summary>
-                <div class="auth-more-body">
-                  <button type="button" class="secondary-button auth-wide-button" data-action="connect-external-wallet">
-                    Connect browser wallet
-                  </button>
-                  <button id="dev-auth-button" type="button" class="ghost-button auth-wide-button" data-action="dev-auth" hidden>
-                    Use local dev account
-                  </button>
-                  <p class="muted small auth-help">
-                    MetaMask, Rabby, and Coinbase Wallet via injected EIP-1193.
-                  </p>
-                </div>
-              </details>
-
               <p id="auth-status" class="auth-status muted small" aria-live="polite"></p>
+
               <div class="row end">
-                <button id="auth-continue-button" type="button" class="cta-button" data-action="auth-continue" hidden>
+                <button id="auth-continue-button" type="button" class="cta-button" data-action="auth-continue" hidden disabled>
                   <span>Continue</span>
                   <span class="arrow">→</span>
                 </button>
@@ -166,24 +133,25 @@
             ============================================================ --%>
       <section class="screen" data-screen="nickname" hidden>
         <.top_nav>
-          <span class="wallet-tag" id="nickname-wallet">Wallet · —</span>
-          <button class="ghost-button small" data-action="sign-out">Sign out</button>
+          <span id="nickname-mode-tag" class="mode-tag casual" hidden>Casual</span>
+          <span class="wallet-tag" id="nickname-wallet" hidden>Wallet · —</span>
+          <button class="ghost-button small" data-action="sign-out" id="nickname-signout-btn" hidden>Sign out</button>
         </.top_nav>
+
+        <div class="screen-back-row">
+          <button class="ghost-button small" data-action="back-to-landing" id="nickname-back-btn">← Back</button>
+        </div>
 
         <div class="modal-stage">
           <div class="modal-card narrow">
-            <p class="eyebrow"><span class="num">02</span> Match Registration</p>
             <h2>Pick a nickname</h2>
-            <p class="muted small">Visible to opponents and stamped on every match receipt.</p>
 
             <form id="nickname-form" class="stack">
               <label>
                 Nickname
                 <input id="nickname-input" name="nickname" maxlength="18" minlength="2" autocomplete="nickname" placeholder="e.g. NEON_K" required />
-                <span class="field-hint">2–18 characters. Letters, numbers, _ and - only.</span>
               </label>
               <div class="row end">
-                <button type="button" class="ghost-button" data-action="back-to-landing">← Back</button>
                 <button type="submit" class="cta-button">
                   <span>Continue</span>
                   <span class="arrow">→</span>
@@ -199,10 +167,11 @@
             ============================================================ --%>
       <section class="screen" data-screen="lobby" hidden>
         <.top_nav>
-          <span class="wallet-tag" id="lobby-wallet">Wallet · —</span>
+          <span class="wallet-tag" id="lobby-wallet" hidden>Wallet · —</span>
           <span class="nick-tag">Player · <strong id="lobby-nick">—</strong></span>
           <button class="ghost-button small" data-action="change-nick">Change</button>
-          <button class="ghost-button small" data-action="sign-out">Sign out</button>
+          <button class="ghost-button small" data-action="open-profile" id="lobby-profile-btn" hidden>Profile</button>
+          <button class="ghost-button small" data-action="sign-out" id="lobby-signout-btn" hidden>Sign out</button>
         </.top_nav>
 
         <div class="modal-stage">
@@ -225,13 +194,14 @@
                     <tr>
                       <th>Room</th>
                       <th>Mode</th>
+                      <th>Type</th>
                       <th>Players</th>
                       <th>Status</th>
                       <th aria-label="actions"></th>
                     </tr>
                   </thead>
                   <tbody id="room-rows">
-                    <tr class="empty"><td colspan="5">Loading rooms…</td></tr>
+                    <tr class="empty"><td colspan="6">Loading rooms…</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -253,11 +223,11 @@
             </div>
 
             <div id="create-room-panel" class="create-panel" hidden>
-              <p class="eyebrow"><span class="num">03</span> New Room</p>
+              <p class="eyebrow"><span class="num">03</span> New <span id="create-room-mode-label">Casual</span> Room</p>
               <form id="create-room-form" class="row" style="margin-top: var(--s-3)">
                 <label class="grow">
                   Room name
-                  <input id="create-room-name" maxlength="28" placeholder="e.g. Casual 2v2" required />
+                  <input id="create-room-name" maxlength="28" placeholder="e.g. 2v2" required />
                 </label>
                 <label>
                   Mode
@@ -274,6 +244,54 @@
                   <button type="submit" class="cta-button">Create</button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <%!-- ============================================================
+            PROFILE
+            ============================================================ --%>
+      <section class="screen" data-screen="profile" hidden>
+        <.top_nav>
+          <button class="ghost-button small" data-action="back-to-lobby-from-profile">← Back</button>
+        </.top_nav>
+
+        <div class="modal-stage">
+          <div class="modal-card narrow">
+            <div class="auth-intro">
+              <p class="eyebrow">Account</p>
+              <h2>Your on-chain profile</h2>
+              <p class="muted small">Stored in the <code>UserRegistry</code> contract.</p>
+            </div>
+
+            <dl class="profile-list">
+              <div class="profile-row">
+                <dt>Nickname</dt>
+                <dd id="profile-nickname">—</dd>
+              </div>
+              <div class="profile-row">
+                <dt>Wallet</dt>
+                <dd id="profile-wallet" class="mono">—</dd>
+              </div>
+              <div class="profile-row">
+                <dt>Identifier hash</dt>
+                <dd id="profile-identifier" class="mono">—</dd>
+              </div>
+              <div class="profile-row">
+                <dt>Contract</dt>
+                <dd id="profile-contract" class="mono">—</dd>
+              </div>
+              <div class="profile-row">
+                <dt>Chain</dt>
+                <dd id="profile-chain">—</dd>
+              </div>
+            </dl>
+
+            <p id="profile-status" class="auth-status muted small" aria-live="polite"></p>
+
+            <div class="row end">
+              <button type="button" class="ghost-button" data-action="change-nick">Change nickname</button>
             </div>
           </div>
         </div>
@@ -346,6 +364,9 @@
                   <span class="kit-dot blue"></span>
                 </span>
               </div>
+              <p id="match-result-receipt-status" class="receipt-status pending">
+                Signed receipt pending chain confirmation.
+              </p>
               <button type="button" class="cta-button" data-action="back-to-lobby">
                 <span>Leave match</span>
                 <span class="arrow">→</span>
