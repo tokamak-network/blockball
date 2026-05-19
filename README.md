@@ -36,7 +36,7 @@ Open the same room in several browser tabs to play up to 4v4. If only one human 
 
 ## Wallet Login
 
-Players must register before joining a room. The MVP supports:
+Ranked players must register a wallet before joining a ranked room. Casual rooms remain nickname-only. The MVP supports:
 
 - Privy email OTP login with embedded Ethereum wallet creation
 - Injected browser wallets such as MetaMask, Rabby, and Coinbase Wallet
@@ -47,8 +47,13 @@ Set these environment variables to enable the Privy path:
 ```bash
 export PRIVY_APP_ID="your-privy-app-id"
 export PRIVY_CLIENT_ID="your-privy-client-id"
+export PRIVY_VERIFICATION_KEY="your-privy-access-token-verification-key"
 export WALLETCONNECT_PROJECT_ID="optional-future-walletconnect-id"
 ```
+
+Ranked Privy joins fail closed unless the backend can verify the Privy access token
+(or local development explicitly enables the dev auth bypass). External wallets use a
+server-issued, single-use registration challenge before `personal_sign`.
 
 The current static frontend uses Privy's vanilla Core SDK from `PRIVY_SDK_URL` or `https://esm.sh/@privy-io/js-sdk-core@latest?bundle`. A later bundled React client can swap this for `@privy-io/react-auth` plus RainbowKit/WalletConnect without changing the game server room flow.
 
@@ -67,20 +72,19 @@ Hold the kick key before you touch the ball. The ball fires on contact, in the d
 - Up to 4v4 public rooms or solo practice against a bot
 - 2-minute matches with score, timer, and automatic reset
 - In-memory season leaderboard
-- Match receipts with replay hash and server signature, shaped like future Tokamak L2 payloads
+- Ranked EIP-712 match receipts with replay hash, verified wallet arrays, and server signature
 
 ## Deliberate Non-Scope
 
 - No token, NFT, wallet, betting, or P2E loop
-- No real blockchain writes yet
+- No durable receipt outbox yet; if configured RPC submission fails, clients receive a permissionless fallback payload
 - No production anti-cheat
 - No persistent database yet
-- No backend Privy JWT verification yet; channel registration checks only enforce that a client supplies a wallet/profile-shaped payload
 
 ## Next Validation Steps
 
 1. Tune movement, kick charge, and arena physics until the loop is fun.
-2. Verify Privy access tokens server-side and persist player profiles.
-3. Store match receipt hashes on a Tokamak testnet contract.
+2. Persist player profiles and ranked receipt outbox/retry state.
+3. Configure RPC submission to a Tokamak testnet `BlockballReceipts` deployment.
 4. Add smart wallet gas sponsorship / paymaster transaction flows.
 5. Add tournament escrow only after legal and platform risk review.

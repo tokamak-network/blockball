@@ -11,10 +11,17 @@ defmodule BlockballWeb.LobbyController do
   def create(conn, params) do
     name = Map.get(params, "name", "") |> to_string()
     mode = parse_mode(Map.get(params, "mode", "vs2"))
+    # Casual is the default; ranked is opt-in. Practice rooms are forced casual server-side.
+    ranked = parse_bool(Map.get(params, "ranked", false)) and mode != :practice
 
-    case Game.create_room(name, mode) do
+    case Game.create_room(name, mode, ranked) do
       {:ok, room_id, _pid} ->
-        json(conn, %{ok: true, room_id: room_id, mode: Atom.to_string(mode)})
+        json(conn, %{
+          ok: true,
+          room_id: room_id,
+          mode: Atom.to_string(mode),
+          ranked: ranked
+        })
 
       _ ->
         conn |> put_status(422) |> json(%{ok: false})
@@ -29,11 +36,18 @@ defmodule BlockballWeb.LobbyController do
   defp parse_mode("public"), do: :vs4
   defp parse_mode(_), do: :vs2
 
+  defp parse_bool(true), do: true
+  defp parse_bool("true"), do: true
+  defp parse_bool("1"), do: true
+  defp parse_bool("on"), do: true
+  defp parse_bool(_), do: false
+
   defp public_view(meta) do
     %{
       id: meta.id,
       name: meta.name,
       mode: meta.mode,
+      ranked: Map.get(meta, :ranked, false),
       capacity: meta.capacity,
       player_count: meta.player_count,
       status: meta.status,

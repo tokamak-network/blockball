@@ -71,6 +71,37 @@ defmodule Blockball.Game.RoomTest do
     assert Enum.any?(rooms, fn r -> r.id == room_id and r.mode == "vs4" end)
   end
 
+  test "ranked room rejects missing or unverified wallet identity" do
+    {:ok, room_id, _pid} =
+      Game.create_room("Ranked #{System.unique_integer([:positive])}", :vs2, true)
+
+    assert {:error, :wallet_required} =
+             Game.join(room_id, "p1", "Alice", registration: nil)
+
+    assert {:error, :wallet_required} =
+             Game.join(room_id, "p2", "Bob", registration: %{"kind" => "privy"})
+
+    assert {:ok, reply} =
+             Game.join(room_id, "p3", "Carol",
+               registration: %{
+                 "kind" => "privy",
+                 "wallet_address" => "0x1000000000000000000000000000000000000001",
+                 "verified_wallet_address" => "0x1000000000000000000000000000000000000001"
+               }
+             )
+
+    assert reply.spectator == false
+    assert [%{wallet: "0x1000…0001"}] = reply.snapshot.players
+  end
+
+  test "casual room accepts join without registration" do
+    {:ok, room_id, _pid} =
+      Game.create_room("Casual #{System.unique_integer([:positive])}", :vs2, false)
+
+    assert {:ok, reply} = Game.join(room_id, "p1", "Alice", registration: nil)
+    assert reply.spectator == false
+  end
+
   test "chat broadcasts to room subscribers" do
     room = "chat-#{System.unique_integer([:positive])}"
     _pid = Game.ensure_room(room)

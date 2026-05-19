@@ -7,9 +7,11 @@ defmodule Blockball.Game do
   alias Blockball.Util
 
   def join(room_id, player_id, name, opts \\ []) do
+    {join_opts, room_opts} = Keyword.split(opts, [:registration])
+
     room_id
-    |> ensure_room(opts)
-    |> GenServer.call({:join, player_id, name})
+    |> ensure_room(room_opts)
+    |> GenServer.call({:join, player_id, name, join_opts})
   end
 
   def leave(room_id, player_id) do
@@ -44,9 +46,17 @@ defmodule Blockball.Game do
     end
   end
 
-  def create_room(name, mode) when mode in [:practice, :vs1, :vs2, :vs3, :vs4] do
-    room_id = Util.random_id(6)
-    pid = ensure_room(room_id, name: sanitize_name_for_room(name), mode: mode)
+  def create_room(name, mode, ranked \\ false)
+      when mode in [:practice, :vs1, :vs2, :vs3, :vs4] and is_boolean(ranked) do
+    room_id = Util.random_id(6) |> sanitize_room()
+
+    pid =
+      ensure_room(room_id,
+        name: sanitize_name_for_room(name),
+        mode: mode,
+        ranked: ranked
+      )
+
     {:ok, room_id, pid}
   end
 

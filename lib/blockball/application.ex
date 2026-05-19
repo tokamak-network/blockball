@@ -10,6 +10,7 @@ defmodule Blockball.Application do
       {Registry, keys: :unique, name: Blockball.Game.Registry},
       {DynamicSupervisor, strategy: :one_for_one, name: Blockball.Game.RoomSupervisor},
       Blockball.Game.Leaderboard,
+      Blockball.WalletAuth.Challenges,
       BlockballWeb.Endpoint
     ]
 

@@ -29,6 +29,9 @@ defmodule Blockball.MixProject do
       {:phoenix_pubsub, "~> 2.2"},
       {:phoenix_live_view, "~> 1.1"},
       {:jason, "~> 1.4"},
+      {:jose, "~> 1.11"},
+      {:ex_keccak, "~> 0.7.8"},
+      {:ex_secp256k1, "~> 0.8.0"},
       {:bandit, "~> 1.10"}
     ]
   end

@@ -5,6 +5,8 @@ defmodule Blockball.Game.Room do
 
   alias Blockball.Game
   alias Blockball.Game.Leaderboard
+  alias Blockball.Game.RankedMatchReceipt
+  alias Blockball.Onchain.ReceiptSubmitter
   alias Blockball.Util
   alias BlockballWeb.Endpoint
 
@@ -68,11 +70,15 @@ defmodule Blockball.Game.Room do
   def init({room_id, opts}) do
     id = Game.sanitize_room(room_id)
     mode = Keyword.get(opts, :mode, :public)
+    # Casual is the default. Ranked is opt-in and disabled for practice rooms.
+    ranked_opt = Keyword.get(opts, :ranked, false)
+    ranked = ranked_opt and mode != :practice
 
     state = %{
       id: id,
       name: Keyword.get(opts, :name, default_name(id, mode)),
       mode: mode,
+      ranked: ranked,
       capacity: Keyword.get(opts, :capacity, default_capacity(mode)),
       created_at: DateTime.utc_now(),
       players: %{},
@@ -87,6 +93,27 @@ defmodule Blockball.Game.Room do
 
     Process.send_after(self(), :tick, @tick_ms)
     {:ok, state}
+  end
+
+  # Ranked rooms require a server-verified wallet address.
+  defp ranked_registration_ok?(nil), do: false
+
+  defp ranked_registration_ok?(reg) when is_map(reg) do
+    verified_wallet_address(reg) != nil
+  end
+
+  defp ranked_registration_ok?(_), do: false
+
+  defp verified_wallet_address(reg) when is_map(reg) do
+    reg
+    |> get_field("verified_wallet_address")
+    |> RankedMatchReceipt.normalize_address()
+  end
+
+  defp verified_wallet_address(_), do: nil
+
+  defp get_field(map, key) do
+    Map.get(map, key) || Map.get(map, String.to_atom(key))
   end
 
   defp default_name(id, :practice), do: "Practice #{id}"
@@ -104,18 +131,22 @@ defmodule Blockball.Game.Room do
   end
 
   @impl true
-  def handle_call({:join, player_id, name}, _from, state) do
+  def handle_call({:join, player_id, name, join_opts}, _from, state) do
     human_count = state.players |> Map.values() |> Enum.count(&(!&1.is_bot))
     name = Game.sanitize_name(name)
     practice_full? = state.mode == :practice and human_count >= 1
+    registration = Keyword.get(join_opts, :registration)
 
     cond do
       practice_full? ->
         {:reply, {:error, :practice_locked}, state}
 
+      state.ranked and not ranked_registration_ok?(registration) ->
+        {:reply, {:error, :wallet_required}, state}
+
       human_count < state.capacity ->
         team = assign_team(state)
-        player = new_player(player_id, name, team)
+        player = new_player(player_id, name, team, verified_wallet_address(registration))
 
         state =
           state
@@ -278,7 +309,8 @@ defmodule Blockball.Game.Room do
 
     %{
       id: Util.random_id(10),
-      season_id: "blockball-alpha-01",
+      season_id: 1,
+      season_label: "blockball-alpha-01",
       status: status,
       started_at: started_at,
       ends_at_ms: now_ms() + @match_seconds * 1000,
@@ -295,7 +327,7 @@ defmodule Blockball.Game.Room do
     %{x: @arena.width / 2, y: @arena.height / 2, vx: 0.0, vy: 0.0, radius: @ball_radius}
   end
 
-  defp new_player(id, name, team) do
+  defp new_player(id, name, team, verified_wallet_address \\ nil) do
     spawn = spawn_for(team)
 
     %{
@@ -309,6 +341,7 @@ defmodule Blockball.Game.Room do
       radius: @player_radius,
       kick_cooldown: 0.0,
       goals: 0,
+      verified_wallet_address: verified_wallet_address,
       is_bot: false,
       joined_at: System.system_time(:millisecond),
       input: empty_input()
@@ -913,25 +946,49 @@ defmodule Blockball.Game.Room do
         true -> :draw
       end
 
-    state.players
-    |> Map.values()
-    |> Enum.reject(& &1.is_bot)
-    |> Enum.each(fn player ->
-      Leaderboard.record(player.name, %{
-        matches: 1,
-        wins: if(winner != :draw and player.team == winner, do: 1, else: 0),
-        losses: if(winner != :draw and player.team != winner, do: 1, else: 0),
-        draws: if(winner == :draw, do: 1, else: 0),
-        goals: player.goals
-      })
-    end)
+    # Only ranked matches contribute to the leaderboard and produce on-chain receipts.
+    # Casual matches are intentionally ephemeral — no record anywhere.
+    if state.ranked do
+      state.players
+      |> Map.values()
+      |> Enum.reject(& &1.is_bot)
+      |> Enum.each(fn player ->
+        Leaderboard.record(player.name, %{
+          matches: 1,
+          wins: if(winner != :draw and player.team == winner, do: 1, else: 0),
+          losses: if(winner != :draw and player.team != winner, do: 1, else: 0),
+          draws: if(winner == :draw, do: 1, else: 0),
+          goals: player.goals
+        })
+      end)
+    end
 
-    receipt = receipt(state, winner)
+    {receipt, receipts_update} =
+      if state.ranked do
+        rec = receipt(state, winner)
 
-    Endpoint.broadcast("room:#{state.id}", "receipt", %{
-      receipt: receipt,
-      leaderboard: Leaderboard.top()
-    })
+        Endpoint.broadcast("room:#{state.id}", "receipt", %{
+          receipt: rec,
+          leaderboard: Leaderboard.top()
+        })
+
+        {rec, [rec | Enum.take(state.receipts, 7)]}
+      else
+        # Casual: emit a soft summary so the UI can show "Final" without claiming a chain record.
+        Endpoint.broadcast("room:#{state.id}", "match_complete", %{
+          ranked: false,
+          score_red: state.match.red_score,
+          score_blue: state.match.blue_score,
+          winner: Atom.to_string(winner)
+        })
+
+        {nil, state.receipts}
+      end
+
+    completion_suffix =
+      if state.ranked,
+        do: "Signed ranked receipt ready — pending chain confirmation.",
+        else: "Casual match — no record kept."
 
     state
     |> put_in([:match, :status], :complete)
@@ -939,55 +996,30 @@ defmodule Blockball.Game.Room do
     |> put_in(
       [:match, :message],
       if(winner == :draw,
-        do: "Draw. Match receipt generated.",
-        else: "#{winner |> Atom.to_string() |> String.upcase()} wins. Match receipt generated."
+        do: "Draw. " <> completion_suffix,
+        else: "#{winner |> Atom.to_string() |> String.upcase()} wins. " <> completion_suffix
       )
     )
-    |> update_in([:receipts], &[receipt | Enum.take(&1, 7)])
-    |> then(fn state ->
+    |> Map.put(:receipts, receipts_update)
+    |> then(fn s ->
       Process.send_after(self(), :reset_after_complete, 5500)
-      state
+      # Suppress unused warning when ranked=false.
+      _ = receipt
+      s
     end)
   end
 
   defp receipt(state, winner) do
-    humans = state.players |> Map.values() |> Enum.reject(& &1.is_bot)
-    red = humans |> Enum.filter(&(&1.team == :red)) |> Enum.map(& &1.name)
-    blue = humans |> Enum.filter(&(&1.team == :blue)) |> Enum.map(& &1.name)
-    replay_hash = state.match.events |> :erlang.term_to_binary() |> sha256()
+    rec =
+      RankedMatchReceipt.build(
+        state.match,
+        state.id,
+        state.players |> Map.values(),
+        winner
+      )
 
-    base = %{
-      match_id: state.match.id,
-      season_id: state.match.season_id,
-      room_id: state.id,
-      red: red,
-      blue: blue,
-      score: "#{state.match.red_score}-#{state.match.blue_score}",
-      winner: Atom.to_string(winner),
-      started_at: DateTime.to_iso8601(state.match.started_at),
-      ended_at: DateTime.utc_now() |> DateTime.to_iso8601(),
-      replay_hash: replay_hash
-    }
-
-    signature =
-      :crypto.mac(:hmac, :sha256, state.secret, :erlang.term_to_binary(base))
-      |> Base.encode16(case: :lower)
-
-    Map.put(base, :server_signature, signature)
-    |> Map.put(:l2_payload, %{
-      contract: "MatchReceipt",
-      chain: "Tokamak L2 testnet placeholder",
-      calldata: %{
-        match_id: state.match.id,
-        season_id: state.match.season_id,
-        room_id: state.id,
-        score_red: state.match.red_score,
-        score_blue: state.match.blue_score,
-        winner: Atom.to_string(winner),
-        replay_hash: replay_hash,
-        server_signature: signature
-      }
-    })
+    ReceiptSubmitter.submit_async(state.id, rec)
+    rec
   end
 
   defp snapshot(state) do
@@ -996,6 +1028,7 @@ defmodule Blockball.Game.Room do
       room_name: state.name,
       room_mode: Atom.to_string(state.mode),
       room_capacity: state.capacity,
+      room_ranked: state.ranked,
       host_id: state.host_id,
       arena: %{
         width: @arena.width,
@@ -1007,6 +1040,7 @@ defmodule Blockball.Game.Room do
       match: %{
         id: state.match.id,
         season_id: state.match.season_id,
+        season_label: state.match[:season_label],
         status: Atom.to_string(state.match.status),
         time_left: ceil(state.match.time_left),
         red_score: state.match.red_score,
@@ -1027,6 +1061,7 @@ defmodule Blockball.Game.Room do
       id: state.id,
       name: state.name,
       mode: Atom.to_string(state.mode),
+      ranked: state.ranked,
       capacity: state.capacity,
       player_count: length(humans),
       has_bot: Map.has_key?(state.players, @bot_id),
@@ -1049,9 +1084,20 @@ defmodule Blockball.Game.Room do
       kick_cooldown: Float.round(player.kick_cooldown, 2),
       charging: player.input.kick and player.kick_cooldown <= 0.0,
       goals: player.goals,
-      is_bot: player.is_bot
+      is_bot: player.is_bot,
+      wallet:
+        if(player.verified_wallet_address,
+          do: obfuscate_wallet(player.verified_wallet_address),
+          else: nil
+        )
     }
   end
+
+  defp obfuscate_wallet("0x" <> rest) when byte_size(rest) >= 8 do
+    "0x" <> String.slice(rest, 0, 4) <> "…" <> String.slice(rest, -4, 4)
+  end
+
+  defp obfuscate_wallet(_), do: nil
 
   defp rounded_ball(ball) do
     %{
@@ -1078,7 +1124,6 @@ defmodule Blockball.Game.Room do
     if len < 0.0001, do: {0.0, 0.0, 0.0}, else: {x / len, y / len, len}
   end
 
-  defp sha256(binary), do: :crypto.hash(:sha256, binary) |> Base.encode16(case: :lower)
   defp dt, do: @tick_ms / 1000
   defp now_ms, do: System.monotonic_time(:millisecond)
 end
