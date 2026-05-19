@@ -15,8 +15,14 @@ defmodule BlockballWeb.Router do
     get "/", PageController, :home
     get "/signup", PageController, :home
     get "/play", PageController, :home
+    get "/play/casual", PageController, :home
+    get "/play/ranked", PageController, :home
+    get "/play/casual/:room_id", PageController, :home
+    get "/play/ranked/:room_id", PageController, :home
     get "/play/:room_id", PageController, :home
     get "/lobby", PageController, :home
+    get "/lobby/:mode", PageController, :home
+    get "/profile", PageController, :home
   end
 
   scope "/api", BlockballWeb do
@@ -24,5 +30,10 @@ defmodule BlockballWeb.Router do
 
     get "/rooms", LobbyController, :list
     post "/rooms", LobbyController, :create
+    post "/wallet/challenge", WalletAuthController, :challenge
+    post "/wallet/lookup", WalletAuthController, :lookup
+    post "/wallet/register", WalletAuthController, :register
+    post "/wallet/update-nickname", WalletAuthController, :update_nickname
+    post "/wallet/me", WalletAuthController, :me
   end
 end
