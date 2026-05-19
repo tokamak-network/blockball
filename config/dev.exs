@@ -23,4 +23,8 @@ config :blockball, :user_registry,
   chain_id: 11_155_111,
   contract_address:
     System.get_env("BLOCKBALL_USER_REGISTRY_CONTRACT") ||
-      "0xCCce9E12Cf11F1a2754625EeC66843E1edC084b9"
+      "0xCCce9E12Cf11F1a2754625EeC66843E1edC084b9",
+  deploy_block: "0xa5fdf4",
+  logs_rpc_url:
+    System.get_env("BLOCKBALL_LOGS_RPC_URL") ||
+      "https://ethereum-sepolia-rpc.publicnode.com"

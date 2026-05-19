@@ -94,6 +94,55 @@ defmodule Blockball.Onchain.UserRegistryTest do
     end
   end
 
+  describe "decode_event_string/1" do
+    test "decodes ABI-encoded dynamic string" do
+      # Mirrors the real UserRegistered event payload for nickname "Thomas":
+      # offset (0x20) || length (6) || "Thomas" padded to 32 bytes
+      data =
+        "0x" <>
+          "0000000000000000000000000000000000000000000000000000000000000020" <>
+          "0000000000000000000000000000000000000000000000000000000000000006" <>
+          "54686f6d61730000000000000000000000000000000000000000000000000000"
+
+      assert {:ok, "Thomas"} = UserRegistry.decode_event_string(data)
+    end
+
+    test "rejects malformed data" do
+      assert {:error, :invalid_string_data} = UserRegistry.decode_event_string("0x1234")
+      assert {:error, :invalid_string_data} = UserRegistry.decode_event_string("nope")
+    end
+  end
+
+  describe "decode_event_logs/1" do
+    test "extracts wallet / identifier / nickname from a UserRegistered log" do
+      log = %{
+        "topics" => [
+          "0xfd300ef55fba4d96bd88a72be560bcd1b8079e0d4b660174aaf3d387a2680d8a",
+          "0x000000000000000000000000a3e32c0babfca097646bbda199ce9bcaa5d8ce13",
+          "0xb54ac361c67aabc1d9d73b4a4b1ce2fd9a243f8c6423764aa96317564bb19471"
+        ],
+        "data" =>
+          "0x" <>
+            "0000000000000000000000000000000000000000000000000000000000000020" <>
+            "0000000000000000000000000000000000000000000000000000000000000006" <>
+            "54686f6d61730000000000000000000000000000000000000000000000000000",
+        "blockNumber" => "0xa5fef2",
+        "transactionHash" => "0xdeadbeef"
+      }
+
+      [decoded] = UserRegistry.decode_event_logs([log])
+      assert decoded.wallet == "0xa3e32c0babfca097646bbda199ce9bcaa5d8ce13"
+      assert decoded.identifier_hash == "0xb54ac361c67aabc1d9d73b4a4b1ce2fd9a243f8c6423764aa96317564bb19471"
+      assert decoded.nickname == "Thomas"
+      assert decoded.block_number == "0xa5fef2"
+      assert decoded.tx_hash == "0xdeadbeef"
+    end
+
+    test "skips malformed logs" do
+      assert UserRegistry.decode_event_logs([%{"topics" => []}]) == []
+    end
+  end
+
   describe "parse_send_output/1" do
     test "extracts tx_hash from cast --json output" do
       json =

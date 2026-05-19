@@ -263,6 +263,8 @@ function renderModeChrome() {
 
   const profileBtn = document.querySelector("#lobby-profile-btn");
   if (profileBtn) profileBtn.hidden = !ranked;
+  const playersBtn = document.querySelector("#lobby-players-btn");
+  if (playersBtn) playersBtn.hidden = !ranked;
 
   const createLabel = document.querySelector("#create-room-mode-label");
   if (createLabel) createLabel.textContent = ranked ? "Ranked" : "Casual";
@@ -596,6 +598,78 @@ async function loadProfile() {
   }
 }
 
+async function openPlayers() {
+  if (!state.profile || !state.profile.address) {
+    showToast("Sign in to view the registry.");
+    return;
+  }
+  showScreen("players");
+  await loadPlayers();
+}
+
+async function loadPlayers() {
+  const status = document.getElementById("players-status");
+  const rows = document.getElementById("players-rows");
+  const count = document.getElementById("players-count");
+  if (rows) rows.innerHTML = '<tr class="empty"><td colspan="5">Loading on-chain players…</td></tr>';
+  if (status) status.textContent = "Reading UserRegistered events…";
+
+  if (!state.authToken) {
+    if (status) status.textContent = "Privy session required.";
+    return;
+  }
+
+  try {
+    const data = await walletApi("/api/wallet/players", {});
+    const players = Array.isArray(data.players) ? data.players : [];
+    if (count) count.textContent = `${players.length} player${players.length === 1 ? "" : "s"}`;
+    if (status) status.textContent = `Contract ${data.contract_address || "—"}`;
+
+    if (!rows) return;
+    if (players.length === 0) {
+      rows.innerHTML = '<tr class="empty"><td colspan="5">No registrations yet.</td></tr>';
+      return;
+    }
+
+    const baseTx = explorerTxBase(data.chain_id);
+    rows.innerHTML = players
+      .map((p) => {
+        const wallet = escapeHtml(p.wallet || "—");
+        const idHash = escapeHtml(p.identifier_hash || "—");
+        const nick = escapeHtml(p.nickname || "—");
+        const block = p.block_number ? parseInt(p.block_number, 16) : null;
+        const blockLabel = block != null && !Number.isNaN(block) ? String(block) : "—";
+        const tx = p.tx_hash;
+        const txCell = tx && baseTx
+          ? `<a href="${baseTx}${escapeHtml(tx)}" target="_blank" rel="noopener">tx ↗</a>`
+          : "—";
+        return `<tr>
+          <td>${nick}</td>
+          <td class="mono">${wallet}</td>
+          <td class="mono">${idHash}</td>
+          <td>${blockLabel}</td>
+          <td>${txCell}</td>
+        </tr>`;
+      })
+      .join("");
+  } catch (err) {
+    console.warn("players load failed:", err);
+    if (status) status.textContent = err.message || "Could not load players.";
+    if (rows) rows.innerHTML = '<tr class="empty"><td colspan="5">—</td></tr>';
+  }
+}
+
+function explorerTxBase(chainId) {
+  switch (Number(chainId)) {
+    case 11155111:
+      return "https://sepolia.etherscan.io/tx/";
+    case 1:
+      return "https://etherscan.io/tx/";
+    default:
+      return null;
+  }
+}
+
 async function syncOnchainAccount() {
   const profile = state.profile;
   if (!isRanked() || !profile || !profile.address || !state.authToken) return null;
@@ -900,6 +974,8 @@ function urlForScreen(name, roomId) {
       return "/signup";
     case "profile":
       return "/profile";
+    case "players":
+      return "/players";
     case "nickname":
       return `/play/${modeSeg}`;
     case "lobby":
@@ -942,6 +1018,7 @@ function parseRoute(pathname) {
   if (!pathname || pathname === "/") return { screen: "landing" };
   if (pathname === "/signup" || pathname === "/signup/") return { screen: "signup" };
   if (pathname === "/profile" || pathname === "/profile/") return { screen: "profile" };
+  if (pathname === "/players" || pathname === "/players/") return { screen: "players" };
 
   let m = pathname.match(/^\/play\/(casual|ranked)\/([^\/]+)\/?$/);
   if (m) return { screen: "game", mode: m[1], roomId: decodeURIComponent(m[2]) };
@@ -1016,6 +1093,16 @@ function applyRoute(route, opts = {}) {
     }
     showScreen("profile", { pushUrl: false, ...opts });
     loadProfile();
+    return;
+  }
+
+  if (route.screen === "players") {
+    if (!state.profile) {
+      showScreen("signup", { replaceUrl: true });
+      return;
+    }
+    showScreen("players", { pushUrl: false, ...opts });
+    loadPlayers();
     return;
   }
 
@@ -2404,6 +2491,12 @@ function handleAction(action, dataset) {
       openProfile();
       break;
     case "back-to-lobby-from-profile":
+      showScreen("lobby");
+      break;
+    case "open-players":
+      openPlayers();
+      break;
+    case "back-to-lobby-from-players":
       showScreen("lobby");
       break;
   }

@@ -92,13 +92,10 @@ defmodule BlockballWeb.WalletAuthController do
     with {:ok, _claims} <- verify_privy(conn),
          address when is_binary(address) <- RankedMatchReceipt.normalize_address(wallet),
          {:ok, result} <- UserRegistry.lookup_by_wallet(address) do
-      contract = Application.get_env(:blockball, :user_registry, [])[:contract_address] ||
-                   System.get_env("BLOCKBALL_USER_REGISTRY_CONTRACT")
-
       payload = %{
         ok: true,
         wallet_address: address,
-        contract_address: contract,
+        contract_address: registry_contract_address(),
         chain_id: chain_id()
       }
 
@@ -110,6 +107,25 @@ defmodule BlockballWeb.WalletAuthController do
   end
 
   def me(conn, _), do: json_error(conn, 422, "wallet_address_required")
+
+  def players(conn, _params) do
+    with {:ok, _claims} <- verify_privy(conn),
+         {:ok, players} <- UserRegistry.list_registered() do
+      json(conn, %{
+        ok: true,
+        contract_address: registry_contract_address(),
+        chain_id: chain_id(),
+        players: players
+      })
+    else
+      {:error, reason} -> json_error(conn, status_for(reason), error_code(reason))
+    end
+  end
+
+  defp registry_contract_address do
+    Application.get_env(:blockball, :user_registry, [])[:contract_address] ||
+      System.get_env("BLOCKBALL_USER_REGISTRY_CONTRACT")
+  end
 
   defp profile_fields(:not_registered), do: %{registered: false}
 

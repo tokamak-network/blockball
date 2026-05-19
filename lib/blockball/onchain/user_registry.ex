@@ -75,6 +75,118 @@ defmodule Blockball.Onchain.UserRegistry do
   def update_nickname(_, _), do: {:error, :invalid_update_arguments}
 
   # ---------------------------------------------------------------------------
+  # Player roster (UserRegistered events)
+  # ---------------------------------------------------------------------------
+
+  @user_registered_sig "UserRegistered(address,bytes32,string)"
+
+  def list_registered do
+    with {:ok, config} <- registry_config(),
+         {:ok, raw_logs} <- fetch_user_registered_logs(config) do
+      {:ok, decode_event_logs(raw_logs)}
+    end
+  end
+
+  defp fetch_user_registered_logs(config) do
+    args = [
+      "logs",
+      @user_registered_sig,
+      "--address",
+      config.contract_address,
+      "--from-block",
+      logs_from_block(config),
+      "--rpc-url",
+      logs_rpc_url(config),
+      "--json"
+    ]
+
+    case run_cast(config, args) do
+      {output, 0} ->
+        case Jason.decode(output) do
+          {:ok, logs} when is_list(logs) -> {:ok, logs}
+          _ -> {:error, {:invalid_cast_json, output}}
+        end
+
+      {output, status} when is_integer(status) ->
+        {:error, {:cast_failed, status, output}}
+    end
+  end
+
+  @logs_rpc_default "https://ethereum-sepolia-rpc.publicnode.com"
+
+  defp logs_rpc_url(_config) do
+    System.get_env("BLOCKBALL_LOGS_RPC_URL") ||
+      Application.get_env(:blockball, :user_registry, [])[:logs_rpc_url] ||
+      @logs_rpc_default
+  end
+
+  defp logs_from_block(_config) do
+    System.get_env("BLOCKBALL_USER_REGISTRY_DEPLOY_BLOCK") ||
+      Application.get_env(:blockball, :user_registry, [])[:deploy_block] ||
+      "earliest"
+  end
+
+  def decode_event_logs(logs) when is_list(logs) do
+    logs
+    |> Enum.map(&decode_user_registered/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp decode_user_registered(%{
+         "topics" => [_topic0, wallet_topic, identifier_topic],
+         "data" => data,
+         "blockNumber" => block,
+         "transactionHash" => tx
+       }) do
+    with {:ok, wallet} <- extract_address(wallet_topic),
+         {:ok, identifier} <- decode_bytes32(identifier_topic),
+         {:ok, nickname} <- decode_event_string(data) do
+      %{
+        wallet: wallet,
+        identifier_hash: "0x" <> Base.encode16(identifier, case: :lower),
+        nickname: nickname,
+        block_number: block,
+        tx_hash: tx
+      }
+    else
+      _ -> nil
+    end
+  end
+
+  defp decode_user_registered(_), do: nil
+
+  defp extract_address("0x" <> hex) when byte_size(hex) == 64 do
+    case Base.decode16(hex, case: :mixed) do
+      {:ok, <<_padding::binary-size(12), addr::binary-size(20)>>} ->
+        {:ok, "0x" <> Base.encode16(addr, case: :lower)}
+
+      _ ->
+        {:error, :invalid_address_topic}
+    end
+  end
+
+  defp extract_address(_), do: {:error, :invalid_address_topic}
+
+  def decode_event_string("0x" <> hex) do
+    case Base.decode16(hex, case: :mixed) do
+      {:ok, bin} when byte_size(bin) >= 64 ->
+        <<_offset::binary-size(32), len::256, rest::binary>> = bin
+
+        if byte_size(rest) >= len do
+          <<value::binary-size(len), _::binary>> = rest
+          {:ok, value}
+        else
+          {:error, :invalid_string_data}
+        end
+
+      _ ->
+        {:error, :invalid_string_data}
+    end
+  end
+
+  def decode_event_string(_), do: {:error, :invalid_string_data}
+
+  # ---------------------------------------------------------------------------
   # Cast argument shaping (exposed for tests)
   # ---------------------------------------------------------------------------
 

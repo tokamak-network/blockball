@@ -23,6 +23,7 @@ defmodule BlockballWeb.Router do
     get "/lobby", PageController, :home
     get "/lobby/:mode", PageController, :home
     get "/profile", PageController, :home
+    get "/players", PageController, :home
   end
 
   scope "/api", BlockballWeb do
@@ -35,5 +36,6 @@ defmodule BlockballWeb.Router do
     post "/wallet/register", WalletAuthController, :register
     post "/wallet/update-nickname", WalletAuthController, :update_nickname
     post "/wallet/me", WalletAuthController, :me
+    post "/wallet/players", WalletAuthController, :players
   end
 end

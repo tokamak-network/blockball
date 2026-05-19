@@ -171,6 +171,7 @@
           <span class="nick-tag">Player · <strong id="lobby-nick">—</strong></span>
           <button class="ghost-button small" data-action="change-nick">Change</button>
           <button class="ghost-button small" data-action="open-profile" id="lobby-profile-btn" hidden>Profile</button>
+          <button class="ghost-button small" data-action="open-players" id="lobby-players-btn" hidden>Players</button>
           <button class="ghost-button small" data-action="sign-out" id="lobby-signout-btn" hidden>Sign out</button>
         </.top_nav>
 
@@ -292,6 +293,49 @@
 
             <div class="row end">
               <button type="button" class="ghost-button" data-action="change-nick">Change nickname</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <%!-- ============================================================
+            PLAYERS
+            ============================================================ --%>
+      <section class="screen" data-screen="players" hidden>
+        <.top_nav>
+          <button class="ghost-button small" data-action="back-to-lobby-from-players">← Back</button>
+        </.top_nav>
+
+        <div class="modal-stage">
+          <div class="modal-card wide">
+            <div class="modal-header">
+              <div>
+                <p class="eyebrow">Registry</p>
+                <h2>Registered players</h2>
+              </div>
+              <p class="lobby-meta-text">
+                <strong id="players-count">0 players</strong>
+                <span>on-chain</span>
+              </p>
+            </div>
+
+            <p id="players-status" class="auth-status muted small" aria-live="polite">Loading…</p>
+
+            <div class="room-table-wrap">
+              <table class="room-table">
+                <thead>
+                  <tr>
+                    <th>Nickname</th>
+                    <th>Wallet</th>
+                    <th>Identifier</th>
+                    <th>Block</th>
+                    <th aria-label="tx"></th>
+                  </tr>
+                </thead>
+                <tbody id="players-rows">
+                  <tr class="empty"><td colspan="5">Loading on-chain players…</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
