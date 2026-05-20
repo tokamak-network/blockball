@@ -1163,9 +1163,12 @@ async function refreshRooms() {
 }
 
 function renderRooms() {
-  // Casual lobby hides ranked rooms and vice versa. Practice rooms are forced
-  // casual on the server, so they only show in the casual lobby.
-  const visible = state.rooms.filter((r) => Boolean(r.ranked) === isRanked());
+  // Casual lobby hides ranked rooms and vice versa. Practice rooms are solo
+  // sessions, so they never surface in the lobby — the host enters directly
+  // via the "Practice vs bot" shortcut.
+  const visible = state.rooms.filter(
+    (r) => Boolean(r.ranked) === isRanked() && r.mode !== "practice"
+  );
   const totalPlayers = visible.reduce((acc, r) => acc + (r.player_count || 0), 0);
   lobbyMeta.textContent = `${totalPlayers} player${totalPlayers === 1 ? "" : "s"} · ${visible.length} room${visible.length === 1 ? "" : "s"}`;
 
