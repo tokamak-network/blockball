@@ -390,7 +390,11 @@ async function buildPrivyProfile(user, privy, mod) {
     method: "personal_sign",
     params: [challenge.message, wallet.address]
   });
-  const token = await privy.getAccessToken().catch(() => null);
+  const token = await privy.getAccessToken().catch((err) => {
+    console.warn("Privy access token fetch failed:", err);
+    return null;
+  });
+  if (!token) throw new Error("Privy session unavailable. Sign in again.");
 
   return {
     token,
@@ -412,8 +416,10 @@ async function buildPrivyProfile(user, privy, mod) {
 async function hydratePrivySession() {
   if (!hasPrivyConfig() || state.profile) return;
 
+  let activePrivy = null;
   try {
     const { privy, mod } = await getPrivyClient();
+    activePrivy = privy;
     const { user } = await privy.user.get();
     if (!user) return;
     const { profile, token } = await buildPrivyProfile(user, privy, mod);
@@ -422,10 +428,32 @@ async function hydratePrivySession() {
     if (isRanked()) {
       try {
         await syncOnchainAccount();
-      } catch (_) {}
+      } catch (err) {
+        if (err && err.code === "invalid_privy_token") {
+          console.warn("Stored Privy session no longer valid — clearing.");
+          clearAuthProfile();
+          await clearPrivySession(privy);
+          setAuthStatus("");
+        }
+      }
     }
   } catch (err) {
     console.warn("Privy session restore failed:", err);
+    clearAuthProfile();
+    if (activePrivy) await clearPrivySession(activePrivy);
+  }
+}
+
+async function clearPrivySession(privy) {
+  if (!privy) return;
+  try {
+    if (privy.auth && typeof privy.auth.logout === "function") {
+      await privy.auth.logout();
+    } else if (typeof privy.logout === "function") {
+      await privy.logout();
+    }
+  } catch (err) {
+    console.warn("Privy logout failed:", err);
   }
 }
 
@@ -434,16 +462,34 @@ async function submitPrivyEmail(event) {
   const email = privyEmailInput.value.trim();
   if (!email) return;
 
+  // Always start sign-in from a clean Privy session. Reusing the cached one
+  // causes two issues: (a) sendCode while still logged in is rejected with
+  // "User already has one email account linked", and (b) the cached access
+  // token is often stale and the server rejects it as invalid_privy_token.
+  clearAuthProfile();
   try {
-    setAuthStatus("Sending Privy verification code…");
+    const { privy } = await getPrivyClient();
+    await clearPrivySession(privy);
+  } catch (err) {
+    console.warn("Privy session reset failed:", err);
+  }
+
+  // Swap to the verification step right away so the user can wait there instead
+  // of staring at the email form while Privy ships the code.
+  privyEmailForm.hidden = true;
+  privyCodeForm.hidden = false;
+  privyCodeInput.value = "";
+  setAuthStatus(`Sending verification code to ${email}…`);
+  setTimeout(() => privyCodeInput.focus(), 30);
+
+  try {
     const { privy } = await getPrivyClient();
     await privy.auth.email.sendCode(email);
-    privyEmailForm.hidden = true;
-    privyCodeForm.hidden = false;
     setAuthStatus(`Verification code sent to ${email}.`);
-    setTimeout(() => privyCodeInput.focus(), 30);
   } catch (err) {
     console.warn(err);
+    privyEmailForm.hidden = false;
+    privyCodeForm.hidden = true;
     setAuthStatus(err.message || "Privy email sign in failed.");
   }
 }
@@ -793,6 +839,11 @@ function signOut() {
   if (lobbyNick) lobbyNick.textContent = "—";
   setMode("casual");
   showScreen("landing");
+  if (privyClientPromise) {
+    privyClientPromise
+      .then(({ privy }) => clearPrivySession(privy))
+      .catch((err) => console.warn("Privy logout skipped:", err));
+  }
 }
 
 function ensureAudioCtx() {

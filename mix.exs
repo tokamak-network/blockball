@@ -15,7 +15,7 @@ defmodule Blockball.MixProject do
   def application do
     [
       mod: {Blockball.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [:logger, :runtime_tools, :inets, :ssl, :public_key]
     ]
   end
 
